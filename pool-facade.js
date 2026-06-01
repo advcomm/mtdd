@@ -1,3 +1,6 @@
+const { normalizeConfigHosts } = require('./host-config')
+const { resolveHostIp } = require('./shard-endpoints')
+
 const MTDD_META = Symbol.for('@advcomm/mtdd.meta')
 const PINNED_HOST_INDEX = Symbol.for('@advcomm/mtdd.pinnedHostIndex')
 const PINNED_SUB_TARGET = Symbol.for('@advcomm/mtdd.pinnedSubTarget')
@@ -17,10 +20,7 @@ function normalizeHosts(config) {
   if (!config || config.host === undefined) {
     return []
   }
-  if (Array.isArray(config.host)) {
-    return config.host
-  }
-  return [config.host]
+  return normalizeConfigHosts(config.host)
 }
 
 function buildBaseConfig(config) {
@@ -29,24 +29,44 @@ function buildBaseConfig(config) {
   return base
 }
 
-function getSubPool(meta, hostIndex) {
-  if (!meta.subPools[hostIndex]) {
-    meta.subPools[hostIndex] = new meta.OriginalPool({
-      ...meta.baseConfig,
-      host: meta.hosts[hostIndex],
-    })
-  }
-  return meta.subPools[hostIndex]
+function subTargetCacheKey(hostIndex, hostIp) {
+  return `${hostIndex}:${hostIp}`
 }
 
-function getSubClient(meta, hostIndex) {
-  if (!meta.subClients[hostIndex]) {
-    meta.subClients[hostIndex] = new meta.OriginalClient({
+function getSubPool(meta, hostIndex, role = 'write') {
+  const hostIp = resolveHostIp(
+    meta.hosts[hostIndex],
+    role,
+    meta.readCounters,
+    hostIndex,
+  )
+  const key = subTargetCacheKey(hostIndex, hostIp)
+
+  if (!meta.subPools[key]) {
+    meta.subPools[key] = new meta.OriginalPool({
       ...meta.baseConfig,
-      host: meta.hosts[hostIndex],
+      host: hostIp,
     })
   }
-  return meta.subClients[hostIndex]
+  return meta.subPools[key]
+}
+
+function getSubClient(meta, hostIndex, role = 'write') {
+  const hostIp = resolveHostIp(
+    meta.hosts[hostIndex],
+    role,
+    meta.readCounters,
+    hostIndex,
+  )
+  const key = subTargetCacheKey(hostIndex, hostIp)
+
+  if (!meta.subClients[key]) {
+    meta.subClients[key] = new meta.OriginalClient({
+      ...meta.baseConfig,
+      host: hostIp,
+    })
+  }
+  return meta.subClients[key]
 }
 
 function getPinnedHostIndex(target) {
@@ -70,6 +90,7 @@ function createPoolFacade(config, OriginalPool, OriginalClient) {
     baseConfig: buildBaseConfig(config),
     subPools: {},
     subClients: {},
+    readCounters: {},
     OriginalPool,
     OriginalClient,
   }
@@ -100,6 +121,7 @@ function createStandaloneClientFacade(config, OriginalPool, OriginalClient) {
     baseConfig: buildBaseConfig(config),
     subPools: {},
     subClients: {},
+    readCounters: {},
     OriginalPool,
     OriginalClient,
   }
@@ -135,6 +157,7 @@ function createCheckedOutClientFacade(poolMeta, pinnedHostIndex) {
     baseConfig: poolMeta.baseConfig,
     subPools: poolMeta.subPools,
     subClients: poolMeta.subClients,
+    readCounters: poolMeta.readCounters,
     OriginalPool: poolMeta.OriginalPool,
     OriginalClient: poolMeta.OriginalClient,
     poolMeta,
@@ -146,7 +169,7 @@ function createCheckedOutClientFacade(poolMeta, pinnedHostIndex) {
     setPinnedHostIndex(
       clientFacade,
       pinnedHostIndex,
-      getSubPool(poolMeta, pinnedHostIndex),
+      getSubPool(poolMeta, pinnedHostIndex, 'write'),
     )
   }
 

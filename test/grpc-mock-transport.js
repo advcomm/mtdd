@@ -1,4 +1,12 @@
+const { getWriteHost, getReadHosts } = require('../host-config')
 const { classifyQuery } = require('../query-classifier')
+
+function normalizeHostEntryForConnect(entry) {
+  if (typeof entry === 'string') {
+    return { write: entry, read: [] }
+  }
+  return entry
+}
 
 function createRecordingMockTransport(state) {
   return {
@@ -7,52 +15,75 @@ function createRecordingMockTransport(state) {
       const shards = []
 
       for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-        state.connections.push({
-          host: hosts[hostIndex],
+        const entry = normalizeHostEntryForConnect(hosts[hostIndex])
+        const writeHost = getWriteHost(entry)
+
+        const write = {
+          host: writeHost,
           hostIndex,
+          role: 'write',
           credentials: { ...credentials },
-        })
-        shards.push({
-          host: hosts[hostIndex],
-          hostIndex,
           client: { mock: true },
+        }
+        state.connections.push(write)
+
+        const reads = getReadHosts(entry).map((readHost) => {
+          const readEndpoint = {
+            host: readHost,
+            hostIndex,
+            role: 'read',
+            credentials: { ...credentials },
+            client: { mock: true },
+          }
+          state.connections.push(readEndpoint)
+          return readEndpoint
+        })
+
+        shards.push({
+          hostIndex,
+          write,
+          reads,
+          readCounter: 0,
+          host: writeHost,
         })
       }
 
       return shards
     },
 
-    async query(shard, request) {
+    async query(endpoint, request) {
       state.queries.push({
-        host: shard.host,
-        hostIndex: shard.hostIndex,
+        host: endpoint.host,
+        hostIndex: endpoint.hostIndex,
+        role: endpoint.role,
         ...request,
       })
 
       const classification = classifyQuery(request.text)
       if (classification.commandType === 'DELETE') {
-        return buildDmlMockResult(shard, state, classification, 'DELETE')
+        return buildDmlMockResult(endpoint, state, classification, 'DELETE')
       }
       if (classification.commandType === 'UPDATE') {
-        return buildDmlMockResult(shard, state, classification, 'UPDATE')
+        return buildDmlMockResult(endpoint, state, classification, 'UPDATE')
       }
       if (classification.commandType === 'INSERT') {
-        return buildInsertMockResult(shard, state, classification)
+        return buildInsertMockResult(endpoint, state, classification)
       }
       if (classification.commandType === 'CALL') {
-        return buildCallMockResult(shard, state)
+        return buildCallMockResult(endpoint, state)
       }
 
       const fields = state.selectFields ?? []
       const rowsByShard = state.selectRowsByShard
       const rows = rowsByShard
-        ? (rowsByShard[shard.hostIndex] ??
+        ? (rowsByShard[endpoint.hostIndex] ??
           rowsByShard[rowsByShard.length - 1] ??
           [])
         : [
             {
-              host: shard.host,
+              host: endpoint.host,
               host_index: request.host_index,
+              endpoint_role: endpoint.role,
               value: 1,
             },
           ]
@@ -67,12 +98,16 @@ function createRecordingMockTransport(state) {
     },
 
     async disconnectAll(shards) {
-      state.disconnected = (state.disconnected ?? 0) + shards.length
+      let count = 0
+      for (const shard of shards) {
+        count += 1 + shard.reads.length
+      }
+      state.disconnected = (state.disconnected ?? 0) + count
     },
   }
 }
 
-function buildDmlMockResult(shard, state, classification, command) {
+function buildDmlMockResult(endpoint, state, classification, command) {
   const rowCountsKey =
     command === 'DELETE' ? 'deleteRowCounts' : 'updateRowCounts'
   const returningRowsKey =
@@ -92,7 +127,7 @@ function buildDmlMockResult(shard, state, classification, command) {
 
   const rowCounts = state[rowCountsKey] ?? defaultRowCounts
   const rowCount =
-    rowCounts[shard.hostIndex] ??
+    rowCounts[endpoint.hostIndex] ??
     rowCounts[rowCounts.length - 1] ??
     0
 
@@ -108,7 +143,7 @@ function buildDmlMockResult(shard, state, classification, command) {
 
   const returningRowsByShard = state[returningRowsKey] ?? defaultReturningRows
   const rows =
-    returningRowsByShard[shard.hostIndex] ??
+    returningRowsByShard[endpoint.hostIndex] ??
     returningRowsByShard[returningRowsByShard.length - 1] ??
     []
 
@@ -121,15 +156,15 @@ function buildDmlMockResult(shard, state, classification, command) {
   }
 }
 
-function buildCallMockResult(shard, state) {
+function buildCallMockResult(endpoint, state) {
   const rowCounts = state.callRowCounts ?? [1]
   const rowCount =
-    rowCounts[shard.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
+    rowCounts[endpoint.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
   const rowsByShard = state.callReturningRows ?? [
-    [{ proc: 'ok', host: shard.hostIndex }],
+    [{ proc: 'ok', host: endpoint.hostIndex }],
   ]
   const rows =
-    rowsByShard[shard.hostIndex] ??
+    rowsByShard[endpoint.hostIndex] ??
     rowsByShard[rowsByShard.length - 1] ??
     []
 
@@ -142,10 +177,10 @@ function buildCallMockResult(shard, state) {
   }
 }
 
-function buildInsertMockResult(shard, state, classification) {
+function buildInsertMockResult(endpoint, state, classification) {
   const rowCounts = state.insertRowCounts ?? [1]
   const rowCount =
-    rowCounts[shard.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
+    rowCounts[endpoint.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
 
   if (!classification.hasReturning) {
     return {
@@ -161,7 +196,7 @@ function buildInsertMockResult(shard, state, classification) {
     [{ id: 100, name: 'alpha' }],
   ]
   const rows =
-    returningRowsByShard[shard.hostIndex] ??
+    returningRowsByShard[endpoint.hostIndex] ??
     returningRowsByShard[returningRowsByShard.length - 1] ??
     []
 

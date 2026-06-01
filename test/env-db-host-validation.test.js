@@ -54,6 +54,22 @@ describe('DB_HOST validation when @advcomm/mtdd/register loads', () => {
     assert.equal(result.status, 0, result.stderr)
   })
 
+  it('accepts host objects with write and read IPs', () => {
+    const result = runRegister({
+      DB_HOST:
+        '[{"write":"10.0.1.10","read":["10.0.1.11","10.0.1.12"]}]',
+    })
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('throws when host object is missing write', () => {
+    const result = runRegister({
+      DB_HOST: '[{"read":["10.0.1.11"]}]',
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /must include a "write"/i)
+  })
+
   it('accepts IPv6 addresses in the array', () => {
     const result = runRegister({
       DB_HOST: '["2001:db8::1"]',

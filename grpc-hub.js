@@ -1,4 +1,6 @@
 const path = require('node:path')
+const { getWriteHost, getReadHosts } = require('./host-config')
+const { pickReadEndpoint } = require('./shard-endpoints')
 const { getGrpcPort, getGrpcConnectTimeoutMs } = require('./grpc-policy')
 
 let transport = null
@@ -16,6 +18,12 @@ function resetGrpcHub() {
 
 function getShardState() {
   return shardState
+}
+
+function warnReadConnectFailure(writeHost, hostIndex, readHost, err) {
+  console.warn(
+    `@advcomm/mtdd: warning: gRPC Connect failed for read host ${readHost} on shard ${hostIndex} (write ${writeHost}): ${err.message}`,
+  )
 }
 
 function loadGrpcClient() {
@@ -48,60 +56,95 @@ function promisifyUnary(client, method, request, deadlineMs) {
   })
 }
 
+function normalizeHostEntryForConnect(entry) {
+  if (typeof entry === 'string') {
+    return { write: entry, read: [] }
+  }
+  return entry
+}
+
 function createRealTransport() {
   const { grpc, MtddShard } = loadGrpcClient()
   const grpcPort = getGrpcPort()
   const deadlineMs = getGrpcConnectTimeoutMs()
+
+  async function connectEndpoint(host, hostIndex, credentials, role) {
+    const address = `${host}:${grpcPort}`
+    const client = new MtddShard(
+      address,
+      grpc.credentials.createInsecure(),
+    )
+
+    const request = {
+      host_index: hostIndex,
+      database: credentials.database,
+      user: credentials.user,
+      password: credentials.password,
+      port: credentials.port,
+    }
+
+    let response
+    try {
+      response = await promisifyUnary(client, 'Connect', request, deadlineMs)
+    } catch (err) {
+      throw new Error(
+        `gRPC Connect failed for ${role} host ${host} (host_index ${hostIndex}): ${err.message}`,
+      )
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `gRPC Connect rejected for ${role} host ${host} (host_index ${hostIndex}): ${response.message || 'unknown error'}`,
+      )
+    }
+
+    return { host, hostIndex, role, client }
+  }
 
   return {
     async connectAll(hosts, credentials) {
       const shards = []
 
       for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-        const host = hosts[hostIndex]
-        const address = `${host}:${grpcPort}`
-        const client = new MtddShard(
-          address,
-          grpc.credentials.createInsecure(),
+        const entry = normalizeHostEntryForConnect(hosts[hostIndex])
+        const writeHost = getWriteHost(entry)
+        const write = await connectEndpoint(
+          writeHost,
+          hostIndex,
+          credentials,
+          'write',
         )
 
-        const request = {
-          host_index: hostIndex,
-          database: credentials.database,
-          user: credentials.user,
-          password: credentials.password,
-          port: credentials.port,
+        const reads = []
+        for (const readHost of getReadHosts(entry)) {
+          try {
+            const readEndpoint = await connectEndpoint(
+              readHost,
+              hostIndex,
+              credentials,
+              'read',
+            )
+            reads.push(readEndpoint)
+          } catch (err) {
+            warnReadConnectFailure(writeHost, hostIndex, readHost, err)
+          }
         }
 
-        let response
-        try {
-          response = await promisifyUnary(
-            client,
-            'Connect',
-            request,
-            deadlineMs,
-          )
-        } catch (err) {
-          throw new Error(
-            `gRPC Connect failed for host ${host} (host_index ${hostIndex}): ${err.message}`,
-          )
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            `gRPC Connect rejected for host ${host} (host_index ${hostIndex}): ${response.message || 'unknown error'}`,
-          )
-        }
-
-        shards.push({ host, hostIndex, client })
+        shards.push({
+          hostIndex,
+          write,
+          reads,
+          readCounter: 0,
+          host: writeHost,
+        })
       }
 
       return shards
     },
 
-    async query(shard, request, deadlineMs) {
+    async query(endpoint, request, deadlineMs) {
       const response = await promisifyUnary(
-        shard.client,
+        endpoint.client,
         'Query',
         request,
         deadlineMs,
@@ -109,7 +152,7 @@ function createRealTransport() {
 
       if (!response.ok) {
         throw new Error(
-          `gRPC Query failed on host_index ${request.host_index}: ${response.error || 'unknown error'}`,
+          `gRPC Query failed on host_index ${request.host_index} (${endpoint.role} ${endpoint.host}): ${response.error || 'unknown error'}`,
         )
       }
 
@@ -117,18 +160,23 @@ function createRealTransport() {
     },
 
     async disconnectAll(shards) {
-      const closes = shards.map(async (shard) => {
+      const endpoints = []
+      for (const shard of shards) {
+        endpoints.push(shard.write, ...shard.reads)
+      }
+
+      const closes = endpoints.map(async (endpoint) => {
         try {
           await promisifyUnary(
-            shard.client,
+            endpoint.client,
             'Disconnect',
-            { host_index: shard.hostIndex },
+            { host_index: endpoint.hostIndex },
             deadlineMs,
           )
         } catch {
           // ignore disconnect errors during shutdown
         }
-        shard.client.close()
+        endpoint.client.close()
       })
       await Promise.all(closes)
     },
@@ -140,17 +188,36 @@ function createDefaultMockTransport() {
     async connectAll(hosts, credentials) {
       const shards = []
       for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-        shards.push({
-          host: hosts[hostIndex],
+        const entry = normalizeHostEntryForConnect(hosts[hostIndex])
+        const writeHost = getWriteHost(entry)
+        const write = {
+          host: writeHost,
           hostIndex,
+          role: 'write',
           client: { mock: true },
           credentials,
+        }
+
+        const reads = getReadHosts(entry).map((readHost) => ({
+          host: readHost,
+          hostIndex,
+          role: 'read',
+          client: { mock: true },
+          credentials,
+        }))
+
+        shards.push({
+          hostIndex,
+          write,
+          reads,
+          readCounter: 0,
+          host: writeHost,
         })
       }
       return shards
     },
 
-    async query(shard, request) {
+    async query(endpoint, request) {
       return {
         command: 'SELECT',
         rowCount: 1,
@@ -158,8 +225,9 @@ function createDefaultMockTransport() {
         fields: [],
         rows: [
           {
-            host: shard.host,
+            host: endpoint.host,
             host_index: request.host_index,
+            endpoint_role: endpoint.role,
             value: 1,
           },
         ],
@@ -205,7 +273,7 @@ async function initGrpcHub(hosts, credentials) {
   }
 
   shardState = {
-    hosts: [...hosts],
+    hosts: hosts.map((entry) => normalizeHostEntryForConnect(entry)),
     credentials: { ...credentials },
     shards,
   }
@@ -234,7 +302,7 @@ function buildQueryRequest(hostIndex, req, sessionId) {
   return query
 }
 
-async function queryShard(hostIndex, req, sessionId) {
+async function queryShard(hostIndex, req, sessionId, role = 'write') {
   const state = requireShardState()
   const shard = state.shards[hostIndex]
 
@@ -244,10 +312,13 @@ async function queryShard(hostIndex, req, sessionId) {
     )
   }
 
+  const endpoint =
+    role === 'read' ? pickReadEndpoint(shard) : shard.write
+
   const activeTransport = getTransport()
   const request = buildQueryRequest(hostIndex, req, sessionId)
   const deadlineMs = getGrpcConnectTimeoutMs()
-  return activeTransport.query(shard, request, deadlineMs)
+  return activeTransport.query(endpoint, request, deadlineMs)
 }
 
 async function closeGrpcHub() {
@@ -273,4 +344,5 @@ module.exports = {
   useMockTransport,
   resetGrpcHub,
   buildQueryRequest,
+  warnReadConnectFailure,
 }

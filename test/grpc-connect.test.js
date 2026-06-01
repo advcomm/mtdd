@@ -30,11 +30,12 @@ describe('gRPC startup connections', () => {
       grpcState.connections.map((c) => ({
         host: c.host,
         host_index: c.hostIndex,
+        role: c.role,
         database: c.credentials.database,
       })),
       [
-        { host: '10.0.1.10', host_index: 0, database: 'testdb' },
-        { host: '10.0.1.11', host_index: 1, database: 'testdb' },
+        { host: '10.0.1.10', host_index: 0, role: 'write', database: 'testdb' },
+        { host: '10.0.1.11', host_index: 1, role: 'write', database: 'testdb' },
       ],
     )
   })

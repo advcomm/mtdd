@@ -6,8 +6,10 @@ const {
   isCallQuery,
   isCallAllShards,
   isFunctionQuery,
+  isSelectQuery,
   hasTenantTid,
 } = require('./query-classifier')
+const { getWriteHost } = require('./host-config')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
@@ -157,23 +159,29 @@ function ensureCheckoutPin(target, hostIndex) {
   })
 }
 
-async function executeQueryOnShard(hostIndex, req, target, meta) {
+function resolveEndpointRole(req) {
+  return isSelectQuery(req) ? 'read' : 'write'
+}
+
+async function executeQueryOnShard(hostIndex, req, target, meta, role) {
+  const endpointRole = role ?? resolveEndpointRole(req)
+
   if (shouldUseGrpc(meta)) {
     if (target && meta.kind === 'checkout') {
       ensureCheckoutPin(target, hostIndex)
     }
-    return queryShard(hostIndex, req, getSessionId(target))
+    return queryShard(hostIndex, req, getSessionId(target), endpointRole)
   }
 
   const { getSubPool, getSubClient } = require('./pool-facade')
   let subTarget
 
   if (meta.kind === 'pool') {
-    subTarget = getSubPool(meta, hostIndex)
+    subTarget = getSubPool(meta, hostIndex, endpointRole)
   } else if (meta.kind === 'client') {
-    subTarget = getSubClient(meta, hostIndex)
+    subTarget = getSubClient(meta, hostIndex, endpointRole)
   } else if (meta.kind === 'checkout') {
-    const pool = getSubPool(meta, hostIndex)
+    const pool = getSubPool(meta, hostIndex, 'write')
     const client = await pool.connect()
     setPinnedHostIndex(target, hostIndex, client)
     const pgRelease = client.release.bind(client)
@@ -266,7 +274,7 @@ async function routeWithLookupTid(meta, req, target) {
     hosts: meta.hosts,
     strategy: 'lookup',
     hostIndex,
-    selectedHost: meta.hosts[hostIndex],
+    selectedHost: getWriteHost(meta.hosts[hostIndex]),
     tid: req.tid,
     source: meta.kind === 'checkout' ? 'client' : meta.kind,
     originalConfig: { ...meta.baseConfig, host: meta.hosts },
@@ -318,7 +326,7 @@ async function executeRoutedQuery(target, req) {
     req.hostIndex = pinned
 
     if (shouldUseGrpc(meta)) {
-      return queryShard(pinned, req, getSessionId(target))
+      return queryShard(pinned, req, getSessionId(target), 'write')
     }
 
     const subTarget = getPinnedSubTarget(target)

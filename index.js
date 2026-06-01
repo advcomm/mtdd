@@ -2,6 +2,7 @@ const patch = require('./patch')
 const context = require('./context')
 const hooks = require('./hooks')
 const hostPolicy = require('./host-policy')
+const hostConfig = require('./host-config')
 const hostSelector = require('./host-selector')
 const {
   defaultMergeResults,
@@ -25,6 +26,10 @@ module.exports = {
   ...context,
   ...hooks,
   validateEnvDbHost: hostPolicy.validateEnvDbHost,
+  parseHostArray: hostConfig.parseHostArray,
+  normalizeConfigHosts: hostConfig.normalizeConfigHosts,
+  getWriteHost: hostConfig.getWriteHost,
+  getReadHosts: hostConfig.getReadHosts,
   validateLookupUrl: lookupPolicy.validateLookupUrl,
   getGrpcCredentialsFromEnv: require('./grpc-credentials').getGrpcCredentialsFromEnv,
   selectHost: hostSelector.selectHost,
