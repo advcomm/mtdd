@@ -1,0 +1,37 @@
+{
+  "name": "@advcomm/mtdd",
+  "version": "1.0.0",
+  "description": "Production PostgreSQL interception and routing layer for Node.js pg applications",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./register": "./register.js",
+    "./context": "./context.js",
+    "./hooks": "./hooks.js"
+  },
+  "files": [
+    "*.js",
+    "examples/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "postgresql",
+    "pg",
+    "multi-tenant",
+    "database",
+    "routing"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "pg": ">=8.0.0"
+  },
+  "devDependencies": {
+    "pg": "^8.13.0"
+  }
+}
