@@ -1,7 +1,10 @@
 const { parse } = require('pgsql-ast-parser')
-
-const CACHE_MAX = 500
-const classificationCache = new Map()
+const {
+  getCachedClassificationSync,
+  setCachedClassificationSync,
+  getCachedClassificationAsync,
+  setCachedClassificationAsync,
+} = require('./ast-classify-cache')
 
 /**
  * pgsql-ast-parser does not parse PostgreSQL CALL statements.
@@ -28,24 +31,6 @@ function previewSql(sql) {
 
 function isCallStatementText(text) {
   return typeof text === 'string' && CALL_STATEMENT_PATTERN.test(text.trim())
-}
-
-function getCachedClassification(text) {
-  if (!classificationCache.has(text)) {
-    return undefined
-  }
-  const value = classificationCache.get(text)
-  classificationCache.delete(text)
-  classificationCache.set(text, value)
-  return value
-}
-
-function setCachedClassification(text, classification) {
-  if (classificationCache.size >= CACHE_MAX) {
-    const oldest = classificationCache.keys().next().value
-    classificationCache.delete(oldest)
-  }
-  classificationCache.set(text, classification)
 }
 
 function parseStatements(text) {
@@ -152,6 +137,18 @@ function classifyFromAst(statements, sql) {
   return classifyFromStatement(statements[0])
 }
 
+function computeClassification(text) {
+  if (isCallStatementText(text)) {
+    return {
+      commandType: 'CALL',
+      hasReturning: false,
+    }
+  }
+
+  const statements = parseStatements(text)
+  return classifyFromAst(statements, text)
+}
+
 function classifyQuery(text) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
@@ -160,23 +157,31 @@ function classifyQuery(text) {
     }
   }
 
-  const cached = getCachedClassification(text)
+  const cached = getCachedClassificationSync(text)
   if (cached) {
     return cached
   }
 
-  let classification
-  if (isCallStatementText(text)) {
-    classification = {
-      commandType: 'CALL',
+  const classification = computeClassification(text)
+  setCachedClassificationSync(text, classification)
+  return classification
+}
+
+async function classifyQueryAsync(text) {
+  if (typeof text !== 'string' || text.trim() === '') {
+    return {
+      commandType: 'UNKNOWN',
       hasReturning: false,
     }
-  } else {
-    const statements = parseStatements(text)
-    classification = classifyFromAst(statements, text)
   }
 
-  setCachedClassification(text, classification)
+  const cached = await getCachedClassificationAsync(text)
+  if (cached) {
+    return cached
+  }
+
+  const classification = computeClassification(text)
+  await setCachedClassificationAsync(text, classification)
   return classification
 }
 
@@ -194,12 +199,14 @@ function parseQueryAst(text) {
 }
 
 function clearClassificationCache() {
-  classificationCache.clear()
+  const { clearClassificationCache: clearAstCache } = require('./ast-classify-cache')
+  clearAstCache()
 }
 
 module.exports = {
   MtddSqlParseError,
   classifyQuery,
+  classifyQueryAsync,
   parseQueryAst,
   classifyFromAst,
   classifyFromStatement,

@@ -186,7 +186,7 @@ async function queryOnHostIndex(meta, hostIndex, req, target) {
 }
 
 async function fanOutQuery(meta, req, target) {
-  attachQueryClassification(req)
+  await attachQueryClassification(req)
 
   if (req.commandType === 'INSERT') {
     throw new Error(
@@ -266,7 +266,7 @@ async function executeRoutedQuery(target, req) {
   }
 
   req.hosts = meta.hosts
-  attachQueryClassification(req)
+  await attachQueryClassification(req)
   assertInsertRequiresTid(req)
   assertCallTid(req)
   assertFunctionRequiresTid(req)

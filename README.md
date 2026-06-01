@@ -30,6 +30,8 @@ DB_PASSWORD=secret
 DB_PORT=5432
 MTDD_LOOKUP_URL=http://lookup:8080/lookup
 MTDD_GRPC_PORT=50051
+MTDD_REDIS_URL=redis://redis:6379
+MTDD_SQL_CLASSIFY_CACHE_TTL_MS=3600000
 ```
 
 ```bash
@@ -110,6 +112,15 @@ const tid = queryConfigTid ?? asyncContext?.tid ?? undefined
 Missing `tid` is valid (e.g. global reference data). Override merge / coordinator logic in `onQuery` (see below).
 
 SQL routing uses **AST classification** ([`pgsql-ast-parser`](https://www.npmjs.com/package/pgsql-ast-parser)) in [`sql-parse.js`](sql-parse.js). There is no regex fallback. Unparseable SQL or multi-statement strings throw `MtddSqlParseError`. `CALL` is detected via a dedicated pre-parse check because that parser does not support the `CALL` statement type.
+
+Classification results (`commandType`, `hasReturning`) are cached in-process and optionally in **Redis** ([`ast-classify-cache.js`](ast-classify-cache.js)):
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `MTDD_REDIS_URL` | *(unset)* | When set, share classification cache across processes |
+| `MTDD_SQL_CLASSIFY_CACHE_TTL_MS` | `3600000` (60 min) | Sliding TTL — reset on each cache hit; entry expires after this long with no use |
+
+Redis keys: `mtdd:sql:classify:` + SHA-256(hex) of the exact query text. Values are JSON classification objects.
 
 ### Fan-out merge by SQL type
 
@@ -239,6 +250,7 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `lookup-client.js` | HTTP lookup client |
 | `query-executor.js` | Per-query shard routing |
 | `sql-parse.js` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
+| `ast-classify-cache.js` | In-memory + optional Redis cache for classification (SHA-256 keys) |
 | `query-classifier.js` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |
 | `merge-results.js` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
 | `host-policy.js` | `DB_HOST` validation |

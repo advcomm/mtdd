@@ -1,10 +1,10 @@
 const {
   classifyQuery,
-  isCallStatementText,
+  classifyQueryAsync,
 } = require('./sql-parse')
 
-function attachQueryClassification(req) {
-  const classification = classifyQuery(req.text)
+async function attachQueryClassification(req) {
+  const classification = await classifyQueryAsync(req.text)
   req.commandType = classification.commandType
   req.hasReturning = classification.hasReturning
   return req
@@ -53,9 +53,9 @@ function isStoredFunctionSelect(text) {
 
 module.exports = {
   classifyQuery,
+  classifyQueryAsync,
   attachQueryClassification,
   isStoredFunctionSelect,
-  isCallStatementText,
   isInsertQuery,
   isCallQuery,
   isCallAllShards,

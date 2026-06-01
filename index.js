@@ -12,7 +12,9 @@ const {
   discardedCallResult,
 } = require('./merge-results')
 const { classifyQuery } = require('./query-classifier')
-const { MtddSqlParseError, parseQueryAst } = require('./sql-parse')
+const { MtddSqlParseError, parseQueryAst, classifyQueryAsync } = require('./sql-parse')
+const astClassifyCache = require('./ast-classify-cache')
+const sqlCachePolicy = require('./sql-cache-policy')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
@@ -33,8 +35,12 @@ module.exports = {
   mergeFanOutResults,
   discardedCallResult,
   classifyQuery,
+  classifyQueryAsync,
   parseQueryAst,
   MtddSqlParseError,
+  getSqlClassifyCacheTtlMs: sqlCachePolicy.getSqlClassifyCacheTtlMs,
+  closeAstClassifyCache: astClassifyCache.closeAstClassifyCache,
+  isAstClassifyRedisConfigured: astClassifyCache.isRedisConfigured,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,
