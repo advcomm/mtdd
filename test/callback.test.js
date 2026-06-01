@@ -1,13 +1,27 @@
-const { describe, it, beforeEach } = require('node:test')
+const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMockPg } = require('./helpers')
+const {
+  createMockPg,
+  createMockLookupServer,
+  withTestEnv,
+} = require('./helpers')
 const { install } = require('../patch')
-const { resetHostCounter } = require('../host-selector')
+const hooks = require('../hooks')
 
 describe('callback passthrough', () => {
-  beforeEach(() => {
-    resetHostCounter()
-    process.env.DB_HOST = '["127.0.0.1"]'
+  let restoreEnv
+  let lookup
+
+  beforeEach(async () => {
+    restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
+    process.env.MTDD_LOOKUP_URL = lookup.url
+    hooks.onQuery = async (req, next) => next()
+  })
+
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
   })
 
   it('supports pool.query(text, callback)', async () => {
@@ -52,14 +66,17 @@ describe('callback passthrough', () => {
     const client = await pool.connect()
 
     await new Promise((resolve, reject) => {
-      client.query('SELECT 1', (err, result) => {
-        client.release()
-        if (err) reject(err)
-        else {
-          assert.equal(result.command, 'SELECT')
-          resolve()
-        }
-      })
+      client.query(
+        { text: 'SELECT 1', tid: 'tenant-1' },
+        (err, result) => {
+          client.release()
+          if (err) reject(err)
+          else {
+            assert.equal(result.command, 'SELECT')
+            resolve()
+          }
+        },
+      )
     })
   })
 })

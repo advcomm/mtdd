@@ -4,7 +4,7 @@
 
 Production-only PostgreSQL interception and routing layer for Node.js applications using the standard [`pg`](https://node-postgres.com/) driver.
 
-`@advcomm/mtdd` transparently patches `pg`, validates production `DB_HOST` arrays, selects one database host per `Pool`/`Client`, propagates tenant context, and intercepts queries — without changing application code between development and production.
+`@advcomm/mtdd` transparently patches `pg`, validates production `DB_HOST` arrays, resolves shard targets through an HTTP **Lookup server** when `tid` is present, fans out to all shards when `tid` is absent, and propagates tenant context — without changing application code between development and production.
 
 ## Quick start
 
@@ -24,6 +24,7 @@ Vanilla `pg` connects to `localhost`. Do **not** preload MTDD in development.
 
 ```env
 DB_HOST=["10.0.1.10","10.0.1.11","10.0.1.12"]
+MTDD_LOOKUP_URL=http://lookup:8080/lookup
 ```
 
 ```bash
@@ -36,7 +37,7 @@ Or:
 NODE_OPTIONS="--require @advcomm/mtdd/register" node app.js
 ```
 
-Application code stays the same; only the process preload and `DB_HOST` format change.
+Application code stays the same; only the process preload, `DB_HOST` format, and lookup URL change.
 
 ## Application code (unchanged)
 
@@ -59,49 +60,58 @@ const pool = new Pool({
 })
 ```
 
-| Environment | `DB_HOST` | `host` passed to `Pool` | Without MTDD | With MTDD |
-|-------------|-----------|-------------------------|--------------|-----------|
-| Development | `localhost` | `'localhost'` | Works | N/A (no preload) |
-| Production | `["10.0.1.10",…]` | `['10.0.1.10',…]` | **Fails** (pg rejects arrays) | Validates, picks one IP, connects |
+| Environment | `DB_HOST` | Without MTDD | With MTDD |
+|-------------|-----------|--------------|-----------|
+| Development | `localhost` | Works | N/A (no preload) |
+| Production | `["10.0.1.10",…]` | **Fails** (pg rejects arrays) | Facade + per-query routing |
 
-## Production `DB_HOST` rules
+## Query routing
 
-When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before** any PostgreSQL connection:
+| `tid` on query | Behavior |
+|----------------|----------|
+| **Present** | `POST` to Lookup server → `hostIndex` → query **one** shard |
+| **Absent** | Query **every** shard in parallel → **default merge** (concat `rows`, sum `rowCount`) |
 
-1. Must be set.
-2. Must be valid JSON.
-3. Must parse to a **non-empty array**.
-4. Every element must be an IPv4 or IPv6 address (`node:net.isIP`).
-5. Hostnames and single-string values are rejected.
+`tid` resolution order:
 
-Valid:
-
-```env
-DB_HOST=["10.0.1.10"]
-DB_HOST=["10.0.1.10","10.0.1.11"]
-DB_HOST=["2001:db8::1"]
+```js
+const tid = queryConfigTid ?? asyncContext?.tid ?? undefined
 ```
 
-Invalid:
+Missing `tid` is valid (e.g. global reference data). Override merge / coordinator logic in `onQuery` (see below).
+
+### Lookup server (HTTP JSON)
+
+Required when MTDD is loaded:
 
 ```env
-DB_HOST=localhost
-DB_HOST=postgres.example.com
-DB_HOST=10.0.1.10
-DB_HOST=["postgres.example.com"]
-DB_HOST=[]
+MTDD_LOOKUP_URL=http://lookup:8080/lookup
+MTDD_LOOKUP_TIMEOUT_MS=2000
 ```
 
-## Host selection
+**Request**
 
-For `new Pool({ host: ['10.0.1.10', '10.0.1.11'] })`, MTDD:
+```http
+POST /lookup
+Content-Type: application/json
 
-1. Runs round-robin selection (`selectHost`).
-2. Invokes the `onSelectHost` hook (pass-through by default).
-3. Replaces the array with one IP before calling real `pg`.
-4. Invokes the `onConnect` hook (pass-through by default).
+{"tid":"tenant-abc"}
+```
 
-One `Pool` / `Client` instance → one selected host. MTDD does **not** connect to every host.
+**Response**
+
+```json
+{"hostIndex":1}
+```
+
+- `hostIndex` is 0-based and must satisfy `0 <= hostIndex < DB_HOST.length`.
+- The lookup service may be **stateful or stateless**; MTDD sends a stateless HTTP POST per query that includes `tid`.
+- Override transport via `hooks.onLookup(req, next)` (`next()` calls the default HTTP client).
+
+### Transactions
+
+- With `tid`, `pool.connect()` clients are **pinned** to the shard from the first routed query (required for `BEGIN` / `COMMIT`).
+- **Fan-out is not supported** on checked-out clients or `BEGIN` without `tid` on multi-host pools.
 
 ## Tenant context
 
@@ -115,7 +125,7 @@ await pool.query({
 })
 ```
 
-`tid` is forwarded to `onQuery` and is **not** sent to PostgreSQL.
+`tid` is used for lookup and `onQuery`; it is **not** sent to PostgreSQL.
 
 ### AsyncLocalStorage
 
@@ -131,36 +141,47 @@ app.use((req, res, next) => {
 ```
 
 ```js
-await pool.query('SELECT * FROM users') // tid from context when omitted
+await pool.query('SELECT * FROM users') // tid from context → lookup routing
 ```
-
-Resolution order:
-
-```js
-const tid = queryConfigTid ?? asyncContext?.tid ?? undefined
-```
-
-Missing `tid` is valid (e.g. `SELECT * FROM countries`).
 
 ## Hooks
 
 ```js
 const hooks = require('@advcomm/mtdd/hooks')
 
-// async (request, next) => next()
-hooks.onQuery
-hooks.onConnect
-hooks.onSelectHost
+hooks.onQuery       // merge / coordinator logic (fan-out default inside next())
+hooks.onLookup      // optional HTTP lookup override
+hooks.onSelectHost  // after lookup (strategy: 'lookup')
+hooks.onConnect     // pass-through
 ```
 
-Default implementations are pass-through. Replace or wrap them for custom telemetry or policy.
+### Custom fan-out merge
 
-## What MTDD does **not** do (v1)
+```js
+const hooks = require('@advcomm/mtdd/hooks')
+const { fanOutOnly } = require('@advcomm/mtdd')
 
-- SQL rewriting
-- Tenant-based routing to different databases
-- Health checks or replica awareness
-- Connect-to-all-hosts
+hooks.onQuery = async (req, next) => {
+  if (req.tid) return next()
+
+  const shardResults = await fanOutOnly(req.pool, req)
+  // Custom joins, aggregates, or a second query on localhost:
+  // return runCoordinatorQuery(shardResults)
+  return customMerge(shardResults)
+}
+```
+
+Helpers exported from the package root: `fanOutOnly`, `defaultMergeResults`.
+
+## Production `DB_HOST` rules
+
+When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before** any PostgreSQL connection:
+
+1. Must be set.
+2. Must be valid JSON.
+3. Must parse to a **non-empty array**.
+4. Every element must be an IPv4 or IPv6 address (`node:net.isIP`).
+5. Hostnames and single-string values are rejected.
 
 ## Package layout
 
@@ -168,11 +189,15 @@ Default implementations are pass-through. Replace or wrap them for custom teleme
 |------|------|
 | `register.js` | Preload entry (`--require`) |
 | `patch.js` | `pg` monkey-patch |
+| `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
+| `lookup-client.js` | HTTP lookup client |
+| `query-executor.js` | Per-query shard routing |
+| `merge-results.js` | Default fan-out row merge |
 | `host-policy.js` | `DB_HOST` validation |
-| `host-selector.js` | Round-robin host selection |
+| `lookup-policy.js` | `MTDD_LOOKUP_URL` validation |
 | `normalize.js` | Query argument normalization |
 | `context.js` | `AsyncLocalStorage` helpers |
-| `hooks.js` | `onQuery`, `onConnect`, `onSelectHost` |
+| `hooks.js` | Hook entry points |
 
 ## Examples
 
@@ -181,6 +206,8 @@ See [`examples/`](examples/):
 - `app-dev.js` — development without preload
 - `app-prod.js` — production with host array
 - `express-context-example.js` — `runWithMtddContext`
+- `lookup-mock-server.js` — minimal lookup HTTP server
+- `custom-onquery-merge.js` — custom fan-out merge via `onQuery`
 
 ## Tests
 

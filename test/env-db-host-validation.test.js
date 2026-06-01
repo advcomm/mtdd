@@ -9,6 +9,15 @@ describe('DB_HOST validation when @advcomm/mtdd/register loads', () => {
     assert.match(result.stderr, /DB_HOST is required/i)
   })
 
+  it('throws when MTDD_LOOKUP_URL is missing', () => {
+    const result = runRegister({
+      DB_HOST: '["10.0.1.10"]',
+      MTDD_LOOKUP_URL: undefined,
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /MTDD_LOOKUP_URL is required/i)
+  })
+
   it('throws when DB_HOST is localhost (not JSON array)', () => {
     const result = runRegister({ DB_HOST: 'localhost' })
     assert.notEqual(result.status, 0)

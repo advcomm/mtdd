@@ -10,8 +10,13 @@ async function onSelectHost(req, next) {
   return next()
 }
 
+async function onLookup(req, next) {
+  return next()
+}
+
 module.exports = {
   onConnect,
   onQuery,
   onSelectHost,
+  onLookup,
 }

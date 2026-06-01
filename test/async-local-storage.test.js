@@ -1,16 +1,28 @@
-const { describe, it, beforeEach } = require('node:test')
+const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMockPg } = require('./helpers')
+const {
+  createMockPg,
+  createMockLookupServer,
+  withTestEnv,
+} = require('./helpers')
 const { install } = require('../patch')
-const { resetHostCounter } = require('../host-selector')
 const { runWithMtddContext } = require('../context')
 const hooks = require('../hooks')
 
 describe('AsyncLocalStorage tid', () => {
-  beforeEach(() => {
-    resetHostCounter()
-    process.env.DB_HOST = '["127.0.0.1"]'
+  let restoreEnv
+  let lookup
+
+  beforeEach(async () => {
+    restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
+    process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()
+  })
+
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
   })
 
   it('picks up tid from async context when query has no tid', async () => {
@@ -33,6 +45,7 @@ describe('AsyncLocalStorage tid', () => {
     )
 
     assert.equal(captured.tid, 'ctx-tenant')
+    assert.equal(captured.routing, 'single')
     assert.equal(captured.context.userId, 'u1')
     assert.equal(captured.context.requestId, 'r1')
   })

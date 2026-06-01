@@ -1,13 +1,25 @@
-const { describe, it, beforeEach } = require('node:test')
+const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMockPg } = require('./helpers')
+const {
+  createMockPg,
+  createMockLookupServer,
+  withTestEnv,
+} = require('./helpers')
 const { install, PATCHED } = require('../patch')
-const { resetHostCounter } = require('../host-selector')
 
 describe('double patch protection', () => {
-  beforeEach(() => {
-    resetHostCounter()
-    process.env.DB_HOST = '["127.0.0.1"]'
+  let restoreEnv
+  let lookup
+
+  beforeEach(async () => {
+    restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
+    process.env.MTDD_LOOKUP_URL = lookup.url
+  })
+
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
   })
 
   it('install is idempotent and does not re-wrap constructors', () => {

@@ -1,39 +1,53 @@
-const { describe, it, beforeEach } = require('node:test')
+const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMockPg } = require('./helpers')
+const {
+  createMockPg,
+  createMockLookupServer,
+  withTestEnv,
+} = require('./helpers')
 const { install, PATCHED } = require('../patch')
-const { resetHostCounter } = require('../host-selector')
+const { isMtddFacade } = require('../pool-facade')
 
-describe('host selection', () => {
-  beforeEach(() => {
-    resetHostCounter()
-    process.env.DB_HOST = '["10.0.1.10","10.0.1.11","10.0.1.12"]'
+describe('host facade', () => {
+  let restoreEnv
+  let lookup
+
+  beforeEach(async () => {
+    restoreEnv = withTestEnv()
+    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
+    process.env.MTDD_LOOKUP_URL = lookup.url
   })
 
-  it('replaces host array with a single IP for Pool', () => {
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
+  })
+
+  it('retains host array on facade without creating sub-pools at construction', () => {
     const { pg, state } = createMockPg()
     install(pg)
 
-    new pg.Pool({
+    const pool = new pg.Pool({
       host: ['10.0.1.10', '10.0.1.11'],
       port: 5432,
     })
 
-    assert.equal(state.pools.length, 1)
-    assert.equal(typeof state.pools[0].config.host, 'string')
-    assert.ok(['10.0.1.10', '10.0.1.11'].includes(state.pools[0].config.host))
+    assert.equal(isMtddFacade(pool), true)
+    assert.equal(state.pools.length, 0)
   })
 
-  it('replaces host array with a single IP for Client', () => {
+  it('creates sub-pools lazily per host when queries run', async () => {
     const { pg, state } = createMockPg()
     install(pg)
 
-    new pg.Client({
+    const pool = new pg.Pool({
       host: ['10.0.1.10', '10.0.1.11'],
     })
 
-    assert.equal(state.clients.length, 1)
-    assert.equal(typeof state.clients[0].config.host, 'string')
+    await pool.query({ text: 'SELECT 1', tid: 'tenant-a' })
+
+    assert.equal(state.pools.length, 1)
+    assert.equal(state.pools[0].config.host, '10.0.1.10')
   })
 
   it('does not double-patch pg', () => {
@@ -41,33 +55,5 @@ describe('host selection', () => {
     install(pg)
     install(pg)
     assert.equal(pg[PATCHED], true)
-  })
-})
-
-describe('round-robin host selection', () => {
-  beforeEach(() => {
-    resetHostCounter()
-    process.env.DB_HOST = '["10.0.1.10","10.0.1.11"]'
-  })
-
-  it('distributes hosts across successive Pool instances', () => {
-    const { pg, state } = createMockPg()
-    install(pg)
-
-    const hosts = ['10.0.1.10', '10.0.1.11']
-    const config = { host: hosts }
-
-    new pg.Pool(config)
-    new pg.Pool(config)
-    new pg.Pool(config)
-    new pg.Pool(config)
-
-    const selected = state.pools.map((p) => p.config.host)
-    assert.deepEqual(selected, [
-      '10.0.1.10',
-      '10.0.1.11',
-      '10.0.1.10',
-      '10.0.1.11',
-    ])
   })
 })
