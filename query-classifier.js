@@ -9,6 +9,9 @@ const UPDATE_PATTERN =
 const INSERT_PATTERN =
   /^\s*(?:WITH\s+[\s\S]+?\s+)?INSERT\b/i
 
+const CALL_PATTERN =
+  /^\s*(?:WITH\s+[\s\S]+?\s+)?CALL\b/i
+
 function classifyQuery(text) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
@@ -40,6 +43,13 @@ function classifyQuery(text) {
     }
   }
 
+  if (CALL_PATTERN.test(normalized)) {
+    return {
+      commandType: 'CALL',
+      hasReturning: false,
+    }
+  }
+
   return {
     commandType: 'UNKNOWN',
     hasReturning: false,
@@ -60,8 +70,21 @@ function isInsertQuery(req) {
   return classifyQuery(req?.text).commandType === 'INSERT'
 }
 
+function isCallQuery(req) {
+  if (req?.commandType === 'CALL') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'CALL'
+}
+
+function isCallAllShards(req) {
+  return isCallQuery(req) && req.tid === null
+}
+
 module.exports = {
   classifyQuery,
   attachQueryClassification,
   isInsertQuery,
+  isCallQuery,
+  isCallAllShards,
 }

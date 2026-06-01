@@ -9,6 +9,7 @@ const {
   mergeDeleteResults,
   mergeUpdateResults,
   mergeFanOutResults,
+  discardedCallResult,
 } = require('./merge-results')
 const { classifyQuery } = require('./query-classifier')
 const { fanOutOnly } = require('./query-executor')
@@ -29,6 +30,7 @@ module.exports = {
   mergeDeleteResults,
   mergeUpdateResults,
   mergeFanOutResults,
+  discardedCallResult,
   classifyQuery,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,

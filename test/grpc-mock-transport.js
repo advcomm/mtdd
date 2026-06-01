@@ -39,6 +39,9 @@ function createRecordingMockTransport(state) {
       if (classification.commandType === 'INSERT') {
         return buildInsertMockResult(shard, state, classification)
       }
+      if (classification.commandType === 'CALL') {
+        return buildCallMockResult(shard, state)
+      }
 
       return {
         command: 'SELECT',
@@ -106,6 +109,27 @@ function buildDmlMockResult(shard, state, classification, command) {
     rowCount,
     oid: null,
     fields: state[returningFieldsKey] ?? [{ name: 'id', dataTypeID: 23 }],
+    rows,
+  }
+}
+
+function buildCallMockResult(shard, state) {
+  const rowCounts = state.callRowCounts ?? [1]
+  const rowCount =
+    rowCounts[shard.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
+  const rowsByShard = state.callReturningRows ?? [
+    [{ proc: 'ok', host: shard.hostIndex }],
+  ]
+  const rows =
+    rowsByShard[shard.hostIndex] ??
+    rowsByShard[rowsByShard.length - 1] ??
+    []
+
+  return {
+    command: 'CALL',
+    rowCount,
+    oid: null,
+    fields: state.callReturningFields ?? [{ name: 'proc', dataTypeID: 25 }],
     rows,
   }
 }

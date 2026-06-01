@@ -122,7 +122,23 @@ function mergeFanOutResults(req, results) {
     )
   }
 
+  if (classification.commandType === 'CALL') {
+    throw new Error(
+      '@advcomm/mtdd: CALL results must not be merged; route CALL with a tenant tid or tid: null for all shards.',
+    )
+  }
+
   return defaultMergeResults(results)
+}
+
+function discardedCallResult() {
+  return {
+    command: 'CALL',
+    rowCount: 0,
+    oid: null,
+    fields: [],
+    rows: [],
+  }
 }
 
 module.exports = {
@@ -131,4 +147,5 @@ module.exports = {
   mergeDeleteResults,
   mergeUpdateResults,
   mergeFanOutResults,
+  discardedCallResult,
 }

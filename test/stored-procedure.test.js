@@ -15,7 +15,7 @@ describe('stored procedures', () => {
   let grpcState
 
   beforeEach(async () => {
-    restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1","127.0.0.2"]' })
     grpcState = setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
@@ -31,13 +31,14 @@ describe('stored procedures', () => {
     const { pg } = createMockPg()
     install(pg)
 
-    const pool = new pg.Pool({ host: '127.0.0.1' })
+    const pool = new pg.Pool({ host: ['127.0.0.1', '127.0.0.2'] })
     await pool.query({
       text: 'CALL create_invoice($1,$2)',
       values: [1, 99.5],
       tid: 'tenant-1',
     })
 
+    assert.equal(grpcState.queries.length, 1)
     assert.equal(grpcState.queries[0].text, 'CALL create_invoice($1,$2)')
     assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [1, 99.5])
   })
@@ -46,7 +47,7 @@ describe('stored procedures', () => {
     const { pg } = createMockPg()
     install(pg)
 
-    const pool = new pg.Pool({ host: '127.0.0.1' })
+    const pool = new pg.Pool({ host: ['127.0.0.1', '127.0.0.2'] })
     await pool.query({
       text: 'SELECT * FROM calculate_commission($1,$2)',
       values: ['order-1', 'PROMO'],

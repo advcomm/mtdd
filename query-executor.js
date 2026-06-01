@@ -1,8 +1,10 @@
 const { lookupHostIndex } = require('./lookup-client')
-const { mergeFanOutResults } = require('./merge-results')
+const { mergeFanOutResults, discardedCallResult } = require('./merge-results')
 const {
   attachQueryClassification,
   isInsertQuery,
+  isCallQuery,
+  isCallAllShards,
 } = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
@@ -26,10 +28,17 @@ function isBeginQuery(req) {
 }
 
 function assertInsertRequiresTid(req) {
-  attachQueryClassification(req)
   if (isInsertQuery(req) && !req.tid) {
     throw new Error(
       '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+    )
+  }
+}
+
+function assertCallTid(req) {
+  if (isCallQuery(req) && req.tid === undefined) {
+    throw new Error(
+      '@advcomm/mtdd: CALL requires a tenant tid for shard routing, or tid: null to run on all shards.',
     )
   }
 }
@@ -42,10 +51,15 @@ function assertTransactionRouting(target, req) {
 
   const pinned = getPinnedHostIndex(target)
 
-  if (!req.tid && pinned === undefined) {
+  if (req.tid === undefined && pinned === undefined) {
     if (isInsertQuery(req)) {
       throw new Error(
         '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+      )
+    }
+    if (isCallQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: CALL requires a tenant tid for shard routing, or tid: null to run on all shards.',
       )
     }
     if (isBeginQuery(req)) {
@@ -60,7 +74,7 @@ function assertTransactionRouting(target, req) {
     }
   }
 
-  if (!req.tid && pinned !== undefined) {
+  if (req.tid === undefined && pinned !== undefined) {
     throw new Error(
       '@advcomm/mtdd: fan-out queries are not supported on a pinned transaction client. Provide tid for shard routing.',
     )
@@ -165,6 +179,12 @@ async function fanOutQuery(meta, req, target) {
     )
   }
 
+  if (req.commandType === 'CALL') {
+    throw new Error(
+      '@advcomm/mtdd: CALL cannot fan out; provide a tenant tid or tid: null for all shards.',
+    )
+  }
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
@@ -174,7 +194,7 @@ async function fanOutQuery(meta, req, target) {
   return mergeFanOutResults(req, results)
 }
 
-async function routeInsertWithTid(meta, req, target) {
+async function routeWithLookupTid(meta, req, target) {
   req.routing = 'single'
   const hostIndex = await lookupHostIndex(req.tid, meta.hosts.length)
   req.hostIndex = hostIndex
@@ -194,6 +214,23 @@ async function routeInsertWithTid(meta, req, target) {
   return queryOnHostIndex(meta, hostIndex, req, target)
 }
 
+async function broadcastCallQuery(meta, req, target) {
+  const pinned = getPinnedHostIndex(target)
+  if (pinned !== undefined) {
+    throw new Error(
+      '@advcomm/mtdd: broadcast CALL is not supported on a pinned transaction client.',
+    )
+  }
+
+  req.routing = 'broadcast'
+  await Promise.all(
+    meta.hosts.map((_, hostIndex) =>
+      queryOnHostIndex(meta, hostIndex, req, null),
+    ),
+  )
+  return discardedCallResult()
+}
+
 async function executeRoutedQuery(target, req) {
   const meta = getMtddMeta(target)
 
@@ -204,7 +241,12 @@ async function executeRoutedQuery(target, req) {
   req.hosts = meta.hosts
   attachQueryClassification(req)
   assertInsertRequiresTid(req)
+  assertCallTid(req)
   assertTransactionRouting(target, req)
+
+  if (isCallAllShards(req)) {
+    return broadcastCallQuery(meta, req, target)
+  }
 
   const pinned = getPinnedHostIndex(target)
   if (pinned !== undefined) {
@@ -225,7 +267,11 @@ async function executeRoutedQuery(target, req) {
   }
 
   if (req.commandType === 'INSERT') {
-    return routeInsertWithTid(meta, req, target)
+    return routeWithLookupTid(meta, req, target)
+  }
+
+  if (req.commandType === 'CALL') {
+    return routeWithLookupTid(meta, req, target)
   }
 
   if (req.tid) {
@@ -252,6 +298,11 @@ async function executeRoutedQuery(target, req) {
     if (isInsertQuery(req)) {
       throw new Error(
         '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+      )
+    }
+    if (isCallQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: CALL requires a tenant tid for shard routing, or tid: null to run on all shards.',
       )
     }
     req.routing = 'single'

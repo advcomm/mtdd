@@ -45,7 +45,13 @@ function install(pgModule) {
 
     const asyncContext = getMtddContext()
     req.context = asyncContext ? { ...asyncContext } : undefined
-    req.tid = req.tid ?? asyncContext?.tid ?? undefined
+    if (!('tid' in req)) {
+      if (asyncContext && 'tid' in asyncContext) {
+        req.tid = asyncContext.tid
+      } else {
+        req.tid = undefined
+      }
+    }
 
     if (meta) {
       req.hosts = meta.hosts
