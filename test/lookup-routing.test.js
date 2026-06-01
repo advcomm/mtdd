@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
@@ -11,9 +12,13 @@ const hooks = require('../hooks')
 describe('lookup routing', () => {
   let restoreEnv
   let lookup
+  let grpcState
 
   beforeEach(async () => {
-    restoreEnv = withTestEnv()
+    restoreEnv = withTestEnv({
+      DB_HOST: '["10.0.1.10","10.0.1.11","10.0.1.12"]',
+    })
+    grpcState = setupGrpcMock()
     hooks.onQuery = async (req, next) => next()
     hooks.onLookup = async (req, next) => next()
   })
@@ -29,7 +34,7 @@ describe('lookup routing', () => {
     lookup = await createMockLookupServer(() => ({ hostIndex: 1 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
 
-    const { pg, state } = createMockPg()
+    const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({
@@ -41,12 +46,10 @@ describe('lookup routing', () => {
       tid: 'tenant-z',
     })
 
-    assert.equal(result.rows[0].host, '10.0.1.11')
-    assert.equal(
-      state.queries.filter((q) => q.source === 'pool').length,
-      1,
-    )
-    assert.equal(state.queries[0].host, '10.0.1.11')
+    assert.equal(result.rows[0].host_index, 1)
+    assert.equal(grpcState.queries.length, 1)
+    assert.equal(grpcState.queries[0].host_index, 1)
+    assert.equal(grpcState.queries[0].host, '10.0.1.11')
   })
 
   it('rejects lookup responses with out-of-range hostIndex', async () => {

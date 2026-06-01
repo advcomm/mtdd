@@ -84,8 +84,7 @@ function createPoolFacade(config, OriginalPool, OriginalClient) {
       return Promise.resolve(createCheckedOutClientFacade(meta, null))
     },
     async end() {
-      const endings = Object.values(meta.subPools).map((pool) => pool.end())
-      await Promise.all(endings)
+      // gRPC shard connections are process-scoped (opened at preload).
     },
   }
 
@@ -112,8 +111,7 @@ function createStandaloneClientFacade(config, OriginalPool, OriginalClient) {
       )
     },
     async end() {
-      const endings = Object.values(meta.subClients).map((client) => client.end())
-      await Promise.all(endings)
+      // gRPC shard connections are process-scoped (opened at preload).
     },
   }
 

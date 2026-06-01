@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
@@ -11,9 +12,11 @@ const hooks = require('../hooks')
 describe('stored procedures', () => {
   let restoreEnv
   let lookup
+  let grpcState
 
   beforeEach(async () => {
     restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    grpcState = setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()
@@ -25,7 +28,7 @@ describe('stored procedures', () => {
   })
 
   it('passes CALL statements through unchanged', async () => {
-    const { pg, state } = createMockPg()
+    const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({ host: '127.0.0.1' })
@@ -35,12 +38,12 @@ describe('stored procedures', () => {
       tid: 'tenant-1',
     })
 
-    assert.equal(state.queries[0].args[0].text, 'CALL create_invoice($1,$2)')
-    assert.deepEqual(state.queries[0].args[0].values, [1, 99.5])
+    assert.equal(grpcState.queries[0].text, 'CALL create_invoice($1,$2)')
+    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [1, 99.5])
   })
 
   it('passes function SELECT statements through unchanged', async () => {
-    const { pg, state } = createMockPg()
+    const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({ host: '127.0.0.1' })
@@ -50,6 +53,6 @@ describe('stored procedures', () => {
       tid: 'tenant-1',
     })
 
-    assert.match(state.queries[0].args[0].text, /calculate_commission/)
+    assert.match(grpcState.queries[0].text, /calculate_commission/)
   })
 })

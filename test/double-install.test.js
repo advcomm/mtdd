@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install, PATCHED } = require('../patch')
 
@@ -13,6 +14,7 @@ describe('double patch protection', () => {
 
   beforeEach(async () => {
     restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
   })

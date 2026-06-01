@@ -1,6 +1,10 @@
 const path = require('node:path')
 const http = require('node:http')
 const { spawnSync } = require('node:child_process')
+const { resetGrpcHub, useMockTransport, initGrpcHub } = require('../grpc-hub')
+const { getGrpcCredentialsFromEnv } = require('../grpc-credentials')
+const { settlePromiseSync } = require('../install-sync')
+const { createRecordingMockTransport } = require('./grpc-mock-transport')
 
 const registerPath = path.join(__dirname, '..', 'register.js')
 const packageRoot = path.join(__dirname, '..')
@@ -11,6 +15,10 @@ function runRegister(env = {}) {
   const childEnv = {
     ...process.env,
     MTDD_LOOKUP_URL: DEFAULT_LOOKUP_URL,
+    MTDD_GRPC_MOCK: '1',
+    DB_NAME: 'testdb',
+    DB_USER: 'testuser',
+    DB_PASSWORD: 'testpass',
     ...env,
   }
   if (Object.prototype.hasOwnProperty.call(env, 'DB_HOST') && env.DB_HOST === undefined) {
@@ -21,6 +29,17 @@ function runRegister(env = {}) {
     env.MTDD_LOOKUP_URL === undefined
   ) {
     delete childEnv.MTDD_LOOKUP_URL
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(env, 'MTDD_GRPC_MOCK') &&
+    env.MTDD_GRPC_MOCK === undefined
+  ) {
+    delete childEnv.MTDD_GRPC_MOCK
+  }
+  for (const key of ['DB_NAME', 'DB_USER', 'DB_PASSWORD']) {
+    if (Object.prototype.hasOwnProperty.call(env, key) && env[key] === undefined) {
+      delete childEnv[key]
+    }
   }
 
   return spawnSync(
@@ -37,14 +56,23 @@ function runRegister(env = {}) {
 function withTestEnv(overrides = {}) {
   const previous = {
     DB_HOST: process.env.DB_HOST,
+    DB_NAME: process.env.DB_NAME,
+    DB_USER: process.env.DB_USER,
+    DB_PASSWORD: process.env.DB_PASSWORD,
     MTDD_LOOKUP_URL: process.env.MTDD_LOOKUP_URL,
     MTDD_LOOKUP_TIMEOUT_MS: process.env.MTDD_LOOKUP_TIMEOUT_MS,
+    MTDD_GRPC_MOCK: process.env.MTDD_GRPC_MOCK,
+    MTDD_GRPC_PORT: process.env.MTDD_GRPC_PORT,
   }
 
   process.env.DB_HOST =
     overrides.DB_HOST ?? '["127.0.0.1","127.0.0.2"]'
+  process.env.DB_NAME = overrides.DB_NAME ?? 'testdb'
+  process.env.DB_USER = overrides.DB_USER ?? 'testuser'
+  process.env.DB_PASSWORD = overrides.DB_PASSWORD ?? 'testpass'
   process.env.MTDD_LOOKUP_URL =
     overrides.MTDD_LOOKUP_URL ?? DEFAULT_LOOKUP_URL
+  process.env.MTDD_GRPC_MOCK = overrides.MTDD_GRPC_MOCK ?? '1'
   if (overrides.MTDD_LOOKUP_TIMEOUT_MS !== undefined) {
     process.env.MTDD_LOOKUP_TIMEOUT_MS = overrides.MTDD_LOOKUP_TIMEOUT_MS
   }
@@ -58,6 +86,20 @@ function withTestEnv(overrides = {}) {
       }
     }
   }
+}
+
+function setupGrpcMock() {
+  resetGrpcHub()
+  const grpcState = {
+    connections: [],
+    queries: [],
+  }
+  process.env.MTDD_GRPC_MOCK = '1'
+  useMockTransport(createRecordingMockTransport(grpcState))
+  const hosts = JSON.parse(process.env.DB_HOST)
+  const credentials = getGrpcCredentialsFromEnv()
+  settlePromiseSync(initGrpcHub(hosts, credentials))
+  return grpcState
 }
 
 function createMockLookupServer(handler) {
@@ -186,6 +228,7 @@ module.exports = {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
   registerPath,
   packageRoot,
 }

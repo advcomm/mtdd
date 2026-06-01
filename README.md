@@ -24,7 +24,12 @@ Vanilla `pg` connects to `localhost`. Do **not** preload MTDD in development.
 
 ```env
 DB_HOST=["10.0.1.10","10.0.1.11","10.0.1.12"]
+DB_NAME=myapp
+DB_USER=app
+DB_PASSWORD=secret
+DB_PORT=5432
 MTDD_LOOKUP_URL=http://lookup:8080/lookup
+MTDD_GRPC_PORT=50051
 ```
 
 ```bash
@@ -69,8 +74,24 @@ const pool = new Pool({
 
 | `tid` on query | Behavior |
 |----------------|----------|
-| **Present** | `POST` to Lookup server → `hostIndex` → query **one** shard |
-| **Absent** | Query **every** shard in parallel → **default merge** (concat `rows`, sum `rowCount`) |
+| **Present** | `POST` to Lookup server → `hostIndex` → `Query` over gRPC to that shard |
+| **Absent** | `Query` on **every** shard via gRPC in parallel → **default merge** (concat `rows`, sum `rowCount`) |
+
+### gRPC shard tunnels (startup)
+
+On preload, MTDD opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD_GRPC_PORT`, default `50051`). For each address it calls `Connect` with:
+
+| Field | Source |
+|-------|--------|
+| `host_index` | Position in `DB_HOST` (0-based) |
+| `database` | `DB_NAME` |
+| `user` | `DB_USER` |
+| `password` | `DB_PASSWORD` |
+| `port` | `DB_PORT` (PostgreSQL port the shard server uses) |
+
+**All** shards must accept `Connect` successfully or the process **exits on startup** with an error. Queries are sent with `Query` on the same tunnel; results return over gRPC (not direct `pg` TCP to each host).
+
+Proto definition: [`proto/mtdd.proto`](proto/mtdd.proto).
 
 `tid` resolution order:
 
@@ -194,6 +215,8 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `query-executor.js` | Per-query shard routing |
 | `merge-results.js` | Default fan-out row merge |
 | `host-policy.js` | `DB_HOST` validation |
+| `grpc-hub.js` | gRPC connect-all + `Query` routing |
+| `grpc-credentials.js` | `DB_NAME` / `DB_USER` / `DB_PASSWORD` for `Connect` |
 | `lookup-policy.js` | `MTDD_LOOKUP_URL` validation |
 | `normalize.js` | Query argument normalization |
 | `context.js` | `AsyncLocalStorage` helpers |

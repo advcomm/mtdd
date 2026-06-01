@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
@@ -16,6 +17,7 @@ describe('custom onQuery merge', () => {
 
   beforeEach(async () => {
     restoreEnv = withTestEnv()
+    setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()

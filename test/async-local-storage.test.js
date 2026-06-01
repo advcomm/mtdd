@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const { runWithMtddContext } = require('../context')
@@ -15,6 +16,7 @@ describe('AsyncLocalStorage tid', () => {
 
   beforeEach(async () => {
     restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()

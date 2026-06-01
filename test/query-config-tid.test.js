@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
@@ -11,9 +12,11 @@ const hooks = require('../hooks')
 describe('query config tid', () => {
   let restoreEnv
   let lookup
+  let grpcState
 
   beforeEach(async () => {
     restoreEnv = withTestEnv({ DB_HOST: '["127.0.0.1"]' })
+    grpcState = setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()
@@ -24,8 +27,8 @@ describe('query config tid', () => {
     restoreEnv()
   })
 
-  it('exposes tid from query config to onQuery and strips it from pg args', async () => {
-    const { pg, state } = createMockPg()
+  it('exposes tid from query config to onQuery and sends query without tid over gRPC', async () => {
+    const { pg } = createMockPg()
     install(pg)
 
     let captured
@@ -44,7 +47,7 @@ describe('query config tid', () => {
     assert.equal(captured.tid, 'tenant-abc')
     assert.equal(captured.source, 'pool.query')
     assert.equal(captured.routing, 'single')
-    assert.equal('tid' in state.queries[0].args[0], false)
-    assert.equal(state.queries[0].args[0].text, 'SELECT * FROM users')
+    assert.equal(grpcState.queries[0].text, 'SELECT * FROM users')
+    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [])
   })
 })

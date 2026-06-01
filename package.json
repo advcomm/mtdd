@@ -11,6 +11,7 @@
   },
   "files": [
     "*.js",
+    "proto/",
     "examples/",
     "README.md"
   ],
@@ -30,6 +31,10 @@
   "license": "MIT",
   "peerDependencies": {
     "pg": ">=8.0.0"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13"
   },
   "devDependencies": {
     "pg": "^8.13.0"

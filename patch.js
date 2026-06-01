@@ -1,5 +1,8 @@
 const { validateEnvDbHost } = require('./host-policy')
 const { validateLookupUrl } = require('./lookup-policy')
+const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
+const { initGrpcHub, isGrpcHubReady } = require('./grpc-hub')
+const { settlePromiseSync } = require('./install-sync')
 const { getMtddContext } = require('./context')
 const hooks = require('./hooks')
 const { normalizeQueryRequest } = require('./normalize')
@@ -19,8 +22,13 @@ function install(pgModule) {
     return pg
   }
 
-  validateEnvDbHost()
+  const hosts = validateEnvDbHost()
   validateLookupUrl()
+  const grpcCredentials = getGrpcCredentialsFromEnv()
+
+  if (!isGrpcHubReady()) {
+    settlePromiseSync(initGrpcHub(hosts, grpcCredentials))
+  }
 
   const OriginalPool = pg.Pool
   const OriginalClient = pg.Client

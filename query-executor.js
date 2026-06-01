@@ -1,15 +1,13 @@
 const { lookupHostIndex } = require('./lookup-client')
 const { defaultMergeResults } = require('./merge-results')
 const { buildPgQueryArgs } = require('./normalize')
+const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const hooks = require('./hooks')
 const {
   getMtddMeta,
-  getSubPool,
-  getSubClient,
   getPinnedHostIndex,
   setPinnedHostIndex,
   getPinnedSubTarget,
-  isSharded,
 } = require('./pool-facade')
 
 function isBeginQuery(req) {
@@ -82,23 +80,42 @@ function runNativeQuery(target, req) {
   })
 }
 
-async function ensureCheckoutClient(target, hostIndex, meta) {
-  const existing = getPinnedSubTarget(target)
-  if (existing) {
-    return existing
-  }
-
-  const pool = getSubPool(meta, hostIndex)
-  const client = await pool.connect()
-  setPinnedHostIndex(target, hostIndex, client)
-
-  const pgRelease = client.release.bind(client)
-  target.release = () => pgRelease()
-
-  return client
+function shouldUseGrpc(meta) {
+  return meta !== null && isGrpcHubReady()
 }
 
-async function queryOnHostIndex(meta, hostIndex, req, target) {
+function getSessionId(target) {
+  if (!target) {
+    return undefined
+  }
+  const pin = getPinnedSubTarget(target)
+  if (pin && pin.grpc) {
+    return pin.sessionId
+  }
+  return undefined
+}
+
+function ensureCheckoutPin(target, hostIndex) {
+  if (getPinnedHostIndex(target) !== undefined) {
+    return
+  }
+
+  const sessionId = `mtdd-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+  setPinnedHostIndex(target, hostIndex, {
+    grpc: true,
+    sessionId,
+  })
+}
+
+async function executeQueryOnShard(hostIndex, req, target, meta) {
+  if (shouldUseGrpc(meta)) {
+    if (target && meta.kind === 'checkout') {
+      ensureCheckoutPin(target, hostIndex)
+    }
+    return queryShard(hostIndex, req, getSessionId(target))
+  }
+
+  const { getSubPool, getSubClient } = require('./pool-facade')
   let subTarget
 
   if (meta.kind === 'pool') {
@@ -106,21 +123,26 @@ async function queryOnHostIndex(meta, hostIndex, req, target) {
   } else if (meta.kind === 'client') {
     subTarget = getSubClient(meta, hostIndex)
   } else if (meta.kind === 'checkout') {
-    if (target) {
-      subTarget = await ensureCheckoutClient(target, hostIndex, meta)
-    } else {
-      subTarget = getSubPool(meta, hostIndex)
-    }
-  } else {
-    throw new Error('@advcomm/mtdd: unknown facade kind')
+    const pool = getSubPool(meta, hostIndex)
+    const client = await pool.connect()
+    setPinnedHostIndex(target, hostIndex, client)
+    const pgRelease = client.release.bind(client)
+    target.release = () => pgRelease()
+    subTarget = client
   }
 
   return runNativeQuery(subTarget, req)
 }
 
+async function queryOnHostIndex(meta, hostIndex, req, target) {
+  return executeQueryOnShard(hostIndex, req, target, meta)
+}
+
 async function fanOutQuery(meta, req, target) {
   const results = await Promise.all(
-    meta.hosts.map((_, hostIndex) => queryOnHostIndex(meta, hostIndex, req, null)),
+    meta.hosts.map((_, hostIndex) =>
+      queryOnHostIndex(meta, hostIndex, req, null),
+    ),
   )
   req.shardResults = results
   return defaultMergeResults(results)
@@ -140,6 +162,11 @@ async function executeRoutedQuery(target, req) {
   if (pinned !== undefined) {
     req.routing = 'single'
     req.hostIndex = pinned
+
+    if (shouldUseGrpc(meta)) {
+      return queryShard(pinned, req, getSessionId(target))
+    }
+
     const subTarget = getPinnedSubTarget(target)
     if (!subTarget) {
       throw new Error(
@@ -189,11 +216,18 @@ async function fanOutOnly(target, req) {
   req.routing = 'fanout'
 
   const results = await Promise.all(
-    meta.hosts.map((_, hostIndex) => queryOnHostIndex(meta, hostIndex, req, null)),
+    meta.hosts.map((_, hostIndex) =>
+      queryOnHostIndex(meta, hostIndex, req, null),
+    ),
   )
 
   req.shardResults = results
   return results
+}
+
+function isSharded(target) {
+  const meta = getMtddMeta(target)
+  return meta !== null && meta.hosts.length > 1
 }
 
 module.exports = {

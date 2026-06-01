@@ -4,6 +4,7 @@ const {
   createMockPg,
   createMockLookupServer,
   withTestEnv,
+  setupGrpcMock,
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
@@ -11,9 +12,13 @@ const hooks = require('../hooks')
 describe('fan-out default merge', () => {
   let restoreEnv
   let lookup
+  let grpcState
 
   beforeEach(async () => {
-    restoreEnv = withTestEnv()
+    restoreEnv = withTestEnv({
+      DB_HOST: '["10.0.1.10","10.0.1.11"]',
+    })
+    grpcState = setupGrpcMock()
     lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
     process.env.MTDD_LOOKUP_URL = lookup.url
     hooks.onQuery = async (req, next) => next()
@@ -24,8 +29,8 @@ describe('fan-out default merge', () => {
     restoreEnv()
   })
 
-  it('queries every host and merges rows when tid is absent', async () => {
-    const { pg, state } = createMockPg()
+  it('queries every host via gRPC and merges rows when tid is absent', async () => {
+    const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({
@@ -34,11 +39,10 @@ describe('fan-out default merge', () => {
 
     const result = await pool.query('SELECT * FROM countries')
 
-    const poolQueries = state.queries.filter((q) => q.source === 'pool')
-    assert.equal(poolQueries.length, 2)
+    assert.equal(grpcState.queries.length, 2)
     assert.deepEqual(
-      poolQueries.map((q) => q.host).sort(),
-      ['10.0.1.10', '10.0.1.11'],
+      grpcState.queries.map((q) => q.host_index).sort(),
+      [0, 1],
     )
     assert.equal(result.rows.length, 2)
     assert.equal(result.rowCount, 2)

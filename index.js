@@ -6,6 +6,7 @@ const hostSelector = require('./host-selector')
 const { defaultMergeResults } = require('./merge-results')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
+const grpcHub = require('./grpc-hub')
 
 module.exports = {
   install: patch.install,
@@ -13,8 +14,14 @@ module.exports = {
   ...hooks,
   validateEnvDbHost: hostPolicy.validateEnvDbHost,
   validateLookupUrl: lookupPolicy.validateLookupUrl,
+  getGrpcCredentialsFromEnv: require('./grpc-credentials').getGrpcCredentialsFromEnv,
   selectHost: hostSelector.selectHost,
   resetHostCounter: hostSelector.resetHostCounter,
   defaultMergeResults,
   fanOutOnly,
+  initGrpcHub: grpcHub.initGrpcHub,
+  closeGrpcHub: grpcHub.closeGrpcHub,
+  isGrpcHubReady: grpcHub.isGrpcHubReady,
+  useMockTransport: grpcHub.useMockTransport,
+  resetGrpcHub: grpcHub.resetGrpcHub,
 }
