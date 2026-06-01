@@ -37,14 +37,14 @@ describe('query classifier', () => {
     )
   })
 
-  it('returns UNKNOWN for non-DML statements', () => {
+  it('returns UNKNOWN for SELECT and classifies INSERT', () => {
     assert.deepEqual(classifyQuery('SELECT * FROM users'), {
       commandType: 'UNKNOWN',
       hasReturning: false,
     })
 
     assert.deepEqual(classifyQuery('INSERT INTO users (id) VALUES (1)'), {
-      commandType: 'UNKNOWN',
+      commandType: 'INSERT',
       hasReturning: false,
     })
   })

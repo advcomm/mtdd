@@ -116,6 +116,12 @@ function mergeFanOutResults(req, results) {
     return mergeUpdateResults(results, { hasReturning })
   }
 
+  if (classification.commandType === 'INSERT') {
+    throw new Error(
+      '@advcomm/mtdd: INSERT results must not be merged; route INSERT with tid to a single shard.',
+    )
+  }
+
   return defaultMergeResults(results)
 }
 

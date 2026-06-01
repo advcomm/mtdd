@@ -1,6 +1,9 @@
 const { lookupHostIndex } = require('./lookup-client')
 const { mergeFanOutResults } = require('./merge-results')
-const { attachQueryClassification } = require('./query-classifier')
+const {
+  attachQueryClassification,
+  isInsertQuery,
+} = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const hooks = require('./hooks')
@@ -22,6 +25,15 @@ function isBeginQuery(req) {
   return text.trim().toUpperCase() === 'BEGIN'
 }
 
+function assertInsertRequiresTid(req) {
+  attachQueryClassification(req)
+  if (isInsertQuery(req) && !req.tid) {
+    throw new Error(
+      '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+    )
+  }
+}
+
 function assertTransactionRouting(target, req) {
   const meta = getMtddMeta(target)
   if (!meta || meta.hosts.length <= 1) {
@@ -31,6 +43,11 @@ function assertTransactionRouting(target, req) {
   const pinned = getPinnedHostIndex(target)
 
   if (!req.tid && pinned === undefined) {
+    if (isInsertQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+      )
+    }
     if (isBeginQuery(req)) {
       throw new Error(
         '@advcomm/mtdd: BEGIN on a multi-host pool requires tid (or an earlier pinned query with tid) so the transaction uses a single shard.',
@@ -142,6 +159,12 @@ async function queryOnHostIndex(meta, hostIndex, req, target) {
 async function fanOutQuery(meta, req, target) {
   attachQueryClassification(req)
 
+  if (req.commandType === 'INSERT') {
+    throw new Error(
+      '@advcomm/mtdd: INSERT cannot fan out; provide tid for lookup-based routing to one shard.',
+    )
+  }
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
@@ -149,6 +172,26 @@ async function fanOutQuery(meta, req, target) {
   )
   req.shardResults = results
   return mergeFanOutResults(req, results)
+}
+
+async function routeInsertWithTid(meta, req, target) {
+  req.routing = 'single'
+  const hostIndex = await lookupHostIndex(req.tid, meta.hosts.length)
+  req.hostIndex = hostIndex
+
+  const selectRequest = {
+    hosts: meta.hosts,
+    strategy: 'lookup',
+    hostIndex,
+    selectedHost: meta.hosts[hostIndex],
+    tid: req.tid,
+    source: meta.kind === 'checkout' ? 'client' : meta.kind,
+    originalConfig: { ...meta.baseConfig, host: meta.hosts },
+  }
+
+  await hooks.onSelectHost(selectRequest, async () => hostIndex)
+
+  return queryOnHostIndex(meta, hostIndex, req, target)
 }
 
 async function executeRoutedQuery(target, req) {
@@ -159,6 +202,8 @@ async function executeRoutedQuery(target, req) {
   }
 
   req.hosts = meta.hosts
+  attachQueryClassification(req)
+  assertInsertRequiresTid(req)
   assertTransactionRouting(target, req)
 
   const pinned = getPinnedHostIndex(target)
@@ -177,6 +222,10 @@ async function executeRoutedQuery(target, req) {
       )
     }
     return runNativeQuery(subTarget, req)
+  }
+
+  if (req.commandType === 'INSERT') {
+    return routeInsertWithTid(meta, req, target)
   }
 
   if (req.tid) {
@@ -200,6 +249,11 @@ async function executeRoutedQuery(target, req) {
   }
 
   if (meta.hosts.length === 1) {
+    if (isInsertQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: INSERT requires tid so the lookup server can route to a single shard.',
+      )
+    }
     req.routing = 'single'
     req.hostIndex = 0
     return queryOnHostIndex(meta, 0, req, target)

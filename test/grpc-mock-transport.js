@@ -36,6 +36,9 @@ function createRecordingMockTransport(state) {
       if (classification.commandType === 'UPDATE') {
         return buildDmlMockResult(shard, state, classification, 'UPDATE')
       }
+      if (classification.commandType === 'INSERT') {
+        return buildInsertMockResult(shard, state, classification)
+      }
 
       return {
         command: 'SELECT',
@@ -103,6 +106,41 @@ function buildDmlMockResult(shard, state, classification, command) {
     rowCount,
     oid: null,
     fields: state[returningFieldsKey] ?? [{ name: 'id', dataTypeID: 23 }],
+    rows,
+  }
+}
+
+function buildInsertMockResult(shard, state, classification) {
+  const rowCounts = state.insertRowCounts ?? [1]
+  const rowCount =
+    rowCounts[shard.hostIndex] ?? rowCounts[rowCounts.length - 1] ?? 1
+
+  if (!classification.hasReturning) {
+    return {
+      command: 'INSERT',
+      rowCount,
+      oid: null,
+      fields: [],
+      rows: [],
+    }
+  }
+
+  const returningRowsByShard = state.insertReturningRows ?? [
+    [{ id: 100, name: 'alpha' }],
+  ]
+  const rows =
+    returningRowsByShard[shard.hostIndex] ??
+    returningRowsByShard[returningRowsByShard.length - 1] ??
+    []
+
+  return {
+    command: 'INSERT',
+    rowCount,
+    oid: null,
+    fields: state.insertReturningFields ?? [
+      { name: 'id', dataTypeID: 23 },
+      { name: 'name', dataTypeID: 25 },
+    ],
     rows,
   }
 }

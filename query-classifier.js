@@ -6,6 +6,9 @@ const DELETE_PATTERN =
 const UPDATE_PATTERN =
   /^\s*(?:WITH\s+[\s\S]+?\s+)?UPDATE\b/i
 
+const INSERT_PATTERN =
+  /^\s*(?:WITH\s+[\s\S]+?\s+)?INSERT\b/i
+
 function classifyQuery(text) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
@@ -30,6 +33,13 @@ function classifyQuery(text) {
     }
   }
 
+  if (INSERT_PATTERN.test(normalized)) {
+    return {
+      commandType: 'INSERT',
+      hasReturning: RETURNING_PATTERN.test(normalized),
+    }
+  }
+
   return {
     commandType: 'UNKNOWN',
     hasReturning: false,
@@ -43,7 +53,15 @@ function attachQueryClassification(req) {
   return req
 }
 
+function isInsertQuery(req) {
+  if (req?.commandType === 'INSERT') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'INSERT'
+}
+
 module.exports = {
   classifyQuery,
   attachQueryClassification,
+  isInsertQuery,
 }

@@ -77,6 +77,8 @@ const pool = new Pool({
 | **Present** | `POST` to Lookup server → `hostIndex` → `Query` over gRPC to that shard |
 | **Absent** | `Query` on **every** shard via gRPC in parallel → **command-aware merge** (see below) |
 
+**INSERT** always requires `tid` (even on a single-host pool). Lookup resolves to exactly one `host_index`; the query runs on that shard only and the result is returned unchanged (including `RETURNING`). INSERT never fans out.
+
 ### gRPC shard tunnels (startup)
 
 On preload, MTDD opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD_GRPC_PORT`, default `50051`). For each address it calls `Connect` with:
@@ -112,7 +114,7 @@ When a query fans out (no `tid`), MTDD classifies `req.text` and merges shard re
 | DML without `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | `[]` (always empty, like single-shard `pg`) |
 | DML with `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | Concatenate shard rows in host-index order (0 → N−1) |
 
-Other statement types still use the generic merge (concat `rows`, sum `rowCount`) until INSERT and SELECT handlers are added. `hooks.onQuery` can wrap `next()` to override any merge.
+Other statement types (e.g. `SELECT`) still use the generic merge (concat `rows`, sum `rowCount`) until dedicated handlers are added. `hooks.onQuery` can wrap `next()` to override any merge.
 
 Helpers: `classifyQuery`, `mergeFanOutResults`, `mergeDeleteResults`, `mergeUpdateResults`, `mergeDmlResults` (package root exports).
 
@@ -228,7 +230,7 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
 | `lookup-client.js` | HTTP lookup client |
 | `query-executor.js` | Per-query shard routing |
-| `query-classifier.js` | SQL command detection (DELETE, RETURNING, …) |
+| `query-classifier.js` | SQL command detection (DELETE, UPDATE, INSERT, RETURNING, …) |
 | `merge-results.js` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
 | `host-policy.js` | `DB_HOST` validation |
 | `grpc-hub.js` | gRPC connect-all + `Query` routing |
