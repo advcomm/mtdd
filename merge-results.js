@@ -53,12 +53,12 @@ function defaultMergeResults(results) {
   }
 }
 
-function mergeDeleteResults(results, options = {}) {
-  const { hasReturning = false } = options
+function mergeDmlResults(results, options = {}) {
+  const { command = 'UPDATE', hasReturning = false } = options
 
   if (!Array.isArray(results) || results.length === 0) {
     return {
-      command: 'DELETE',
+      command,
       rowCount: 0,
       oid: null,
       fields: [],
@@ -71,7 +71,7 @@ function mergeDeleteResults(results, options = {}) {
 
   if (!hasReturning) {
     return {
-      command: 'DELETE',
+      command,
       rowCount,
       oid: first.oid ?? null,
       fields: [],
@@ -87,12 +87,20 @@ function mergeDeleteResults(results, options = {}) {
   }
 
   return {
-    command: 'DELETE',
+    command,
     rowCount,
     oid: first.oid ?? null,
     fields: pickFieldsFromShards(results),
     rows,
   }
+}
+
+function mergeDeleteResults(results, options = {}) {
+  return mergeDmlResults(results, { ...options, command: 'DELETE' })
+}
+
+function mergeUpdateResults(results, options = {}) {
+  return mergeDmlResults(results, { ...options, command: 'UPDATE' })
 }
 
 function mergeFanOutResults(req, results) {
@@ -104,11 +112,17 @@ function mergeFanOutResults(req, results) {
     return mergeDeleteResults(results, { hasReturning })
   }
 
+  if (classification.commandType === 'UPDATE') {
+    return mergeUpdateResults(results, { hasReturning })
+  }
+
   return defaultMergeResults(results)
 }
 
 module.exports = {
   defaultMergeResults,
+  mergeDmlResults,
   mergeDeleteResults,
+  mergeUpdateResults,
   mergeFanOutResults,
 }

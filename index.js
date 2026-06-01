@@ -3,8 +3,13 @@ const context = require('./context')
 const hooks = require('./hooks')
 const hostPolicy = require('./host-policy')
 const hostSelector = require('./host-selector')
-const { defaultMergeResults, mergeDeleteResults, mergeFanOutResults } =
-  require('./merge-results')
+const {
+  defaultMergeResults,
+  mergeDmlResults,
+  mergeDeleteResults,
+  mergeUpdateResults,
+  mergeFanOutResults,
+} = require('./merge-results')
 const { classifyQuery } = require('./query-classifier')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
@@ -20,7 +25,9 @@ module.exports = {
   selectHost: hostSelector.selectHost,
   resetHostCounter: hostSelector.resetHostCounter,
   defaultMergeResults,
+  mergeDmlResults,
   mergeDeleteResults,
+  mergeUpdateResults,
   mergeFanOutResults,
   classifyQuery,
   fanOutOnly,

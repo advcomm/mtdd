@@ -31,7 +31,10 @@ function createRecordingMockTransport(state) {
 
       const classification = classifyQuery(request.text)
       if (classification.commandType === 'DELETE') {
-        return buildDeleteMockResult(shard, request, state, classification)
+        return buildDmlMockResult(shard, state, classification, 'DELETE')
+      }
+      if (classification.commandType === 'UPDATE') {
+        return buildDmlMockResult(shard, state, classification, 'UPDATE')
       }
 
       return {
@@ -55,8 +58,25 @@ function createRecordingMockTransport(state) {
   }
 }
 
-function buildDeleteMockResult(shard, request, state, classification) {
-  const rowCounts = state.deleteRowCounts ?? [3, 2]
+function buildDmlMockResult(shard, state, classification, command) {
+  const rowCountsKey =
+    command === 'DELETE' ? 'deleteRowCounts' : 'updateRowCounts'
+  const returningRowsKey =
+    command === 'DELETE' ? 'deleteReturningRows' : 'updateReturningRows'
+  const returningFieldsKey =
+    command === 'DELETE' ? 'deleteReturningFields' : 'updateReturningFields'
+  const forceRowsKey =
+    command === 'DELETE'
+      ? 'forceDeleteRowsWithoutReturning'
+      : 'forceUpdateRowsWithoutReturning'
+
+  const defaultRowCounts = [3, 2]
+  const defaultReturningRows = [
+    [{ id: 1 }, { id: 2 }],
+    [{ id: 3 }],
+  ]
+
+  const rowCounts = state[rowCountsKey] ?? defaultRowCounts
   const rowCount =
     rowCounts[shard.hostIndex] ??
     rowCounts[rowCounts.length - 1] ??
@@ -64,32 +84,25 @@ function buildDeleteMockResult(shard, request, state, classification) {
 
   if (!classification.hasReturning) {
     return {
-      command: 'DELETE',
+      command,
       rowCount,
       oid: null,
       fields: [],
-      rows: state.forceDeleteRowsWithoutReturning
-        ? [{ id: 'stray' }]
-        : [],
+      rows: state[forceRowsKey] ? [{ id: 'stray' }] : [],
     }
   }
 
-  const returningRowsByShard = state.deleteReturningRows ?? [
-    [{ id: 1 }, { id: 2 }],
-    [{ id: 3 }],
-  ]
+  const returningRowsByShard = state[returningRowsKey] ?? defaultReturningRows
   const rows =
     returningRowsByShard[shard.hostIndex] ??
     returningRowsByShard[returningRowsByShard.length - 1] ??
     []
 
   return {
-    command: 'DELETE',
+    command,
     rowCount,
     oid: null,
-    fields: state.deleteReturningFields ?? [
-      { name: 'id', dataTypeID: 23 },
-    ],
+    fields: state[returningFieldsKey] ?? [{ name: 'id', dataTypeID: 23 }],
     rows,
   }
 }

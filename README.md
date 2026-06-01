@@ -105,16 +105,16 @@ Missing `tid` is valid (e.g. global reference data). Override merge / coordinato
 
 When a query fans out (no `tid`), MTDD classifies `req.text` and merges shard results in core before returning to the app.
 
-**DELETE** (phase 1):
+**DELETE** and **UPDATE**:
 
 | Case | `command` | `rowCount` | `rows` |
 |------|-----------|------------|--------|
-| `DELETE` without `RETURNING` | `DELETE` | Sum across shards | `[]` (always empty, like single-shard `pg`) |
-| `DELETE ... RETURNING ...` | `DELETE` | Sum across shards | Concatenate shard rows in host-index order (0 → N−1) |
+| DML without `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | `[]` (always empty, like single-shard `pg`) |
+| DML with `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | Concatenate shard rows in host-index order (0 → N−1) |
 
-Other statement types still use the generic merge (concat `rows`, sum `rowCount`) until INSERT, UPDATE, and SELECT handlers are added. `hooks.onQuery` can wrap `next()` to override any merge.
+Other statement types still use the generic merge (concat `rows`, sum `rowCount`) until INSERT and SELECT handlers are added. `hooks.onQuery` can wrap `next()` to override any merge.
 
-Helpers: `classifyQuery`, `mergeFanOutResults`, `mergeDeleteResults` (package root exports).
+Helpers: `classifyQuery`, `mergeFanOutResults`, `mergeDeleteResults`, `mergeUpdateResults`, `mergeDmlResults` (package root exports).
 
 ### Lookup server (HTTP JSON)
 
