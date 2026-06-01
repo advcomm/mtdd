@@ -105,6 +105,31 @@ MTDD then opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD
 
 **All** shards must accept `Connect` successfully or the process **exits on startup** with an error. Queries are sent with `Query` on the same tunnel; results return over gRPC (not direct `pg` TCP to each host).
 
+#### Preload logging (`register.js`)
+
+Startup steps are logged by [`preload-logger.js`](preload-logger.js) using `NODE_ENV` (and `MTDD_GRPC_MOCK` when `NODE_ENV` is unset):
+
+| `NODE_ENV` | Default level | Output |
+|------------|---------------|--------|
+| `development` / `dev` | `debug` | Human-readable steps, per-step timings, full shard list |
+| `test` | `warn` | Failures and warnings only (quiet test runs) |
+| `staging` | `info` | JSON lines with shard endpoints and timings |
+| `production` / `prod` | `info` | JSON lines; lookup URL redacted |
+
+| Variable | Purpose |
+|----------|---------|
+| `MTDD_PRELOAD_LOG_LEVEL` | Override level: `debug`, `info`, `warn`, `error` |
+| `MTDD_LOG_BACKEND` | `console` (default) or `otel` |
+| `MTDD_LOG_OTEL=1` | Shorthand for `MTDD_LOG_BACKEND=otel` in **production only** |
+
+**OpenTelemetry in production:** set `NODE_ENV=production` and `MTDD_LOG_BACKEND=otel` (or `MTDD_LOG_OTEL=1`). Install `@opentelemetry/api` and register your SDK in the app **before** `--require @advcomm/mtdd/register` so preload spans and events export to your collector. If the API package is missing, MTDD falls back to structured console JSON for errors and warnings.
+
+Example production:
+
+```bash
+NODE_ENV=production MTDD_LOG_BACKEND=otel node --require @advcomm/mtdd/register app.js
+```
+
 Proto definition: [`proto/mtdd.proto`](proto/mtdd.proto).
 
 `tid` resolution order:

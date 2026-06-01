@@ -2,6 +2,7 @@ const path = require('node:path')
 const { getWriteHost, getReadHosts } = require('./host-config')
 const { pickReadEndpoint } = require('./shard-endpoints')
 const { getGrpcPort, getGrpcConnectTimeoutMs } = require('./grpc-policy')
+const preloadLog = require('./preload-logger')
 
 let transport = null
 let shardState = null
@@ -21,9 +22,7 @@ function getShardState() {
 }
 
 function warnReadConnectFailure(writeHost, hostIndex, readHost, err) {
-  console.warn(
-    `@advcomm/mtdd: warning: gRPC Connect failed for read host ${readHost} on shard ${hostIndex} (write ${writeHost}): ${err.message}`,
-  )
+  preloadLog.logGrpcReadConnectWarning(writeHost, hostIndex, readHost, err)
 }
 
 function loadGrpcClient() {

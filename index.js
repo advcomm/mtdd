@@ -21,6 +21,7 @@ const localMergePolicy = require('./local-merge-policy')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
+const preloadLogger = require('./preload-logger')
 
 module.exports = {
   install: patch.install,
@@ -64,4 +65,6 @@ module.exports = {
   isGrpcHubReady: grpcHub.isGrpcHubReady,
   useMockTransport: grpcHub.useMockTransport,
   resetGrpcHub: grpcHub.resetGrpcHub,
+  getPreloadLogConfig: preloadLogger.getPreloadLogConfig,
+  resolvePreloadEnv: preloadLogger.resolvePreloadEnv,
 }

@@ -216,10 +216,10 @@ describe('read/write host routing alternate shard layouts', () => {
 
   it('warns when a read endpoint fails to connect but still starts', async () => {
     const warnMessages = []
-    const originalWarn = console.warn
-    console.warn = (...args) => {
-      warnMessages.push(args.join(' '))
-      originalWarn(...args)
+    const originalStdoutWrite = process.stdout.write
+    process.stdout.write = function write(chunk, ...args) {
+      warnMessages.push(String(chunk))
+      return originalStdoutWrite.call(this, chunk, ...args)
     }
 
     try {
@@ -300,7 +300,11 @@ describe('read/write host routing alternate shard layouts', () => {
       settlePromiseSync(initGrpcHub(validateEnvDbHost(), getGrpcCredentialsFromEnv()))
 
       assert.ok(
-        warnMessages.some((m) => /read host 10\.0\.1\.12/i.test(m)),
+        warnMessages.some(
+          (m) =>
+            /read endpoint connect failed/i.test(m) &&
+            /10\.0\.1\.12/.test(m),
+        ),
         'expected warning about failed read host',
       )
 
@@ -318,7 +322,7 @@ describe('read/write host routing alternate shard layouts', () => {
       assert.deepEqual(selectHosts, ['10.0.1.11', '10.0.1.11'])
       assert.ok(!selectHosts.includes('10.0.1.12'))
     } finally {
-      console.warn = originalWarn
+      process.stdout.write = originalStdoutWrite
     }
   })
 })

@@ -13,23 +13,56 @@ const {
   isMtddFacade,
   getMtddMeta,
 } = require('./pool-facade')
+const preloadLog = require('./preload-logger')
 
 const PATCHED = Symbol.for('@advcomm/mtdd.patched')
+
+function runPreload() {
+  const hosts = validateEnvDbHost()
+  preloadLog.logHostsValidated(hosts)
+
+  const lookupUrl = validateLookupUrl()
+  preloadLog.logLookupValidated(lookupUrl)
+
+  const grpcCredentials = getGrpcCredentialsFromEnv()
+  preloadLog.logGrpcCredentials(grpcCredentials)
+
+  verifyLocalPostgresAtStartup(grpcCredentials)
+
+  if (!isGrpcHubReady()) {
+    const hubStart = performance.now()
+    preloadLog.logGrpcHubInitStarting(hosts, grpcCredentials)
+    const state = settlePromiseSync(initGrpcHub(hosts, grpcCredentials))
+    preloadLog.logGrpcHubInitComplete(state?.shards, Math.round(performance.now() - hubStart))
+  }
+
+  return hosts
+}
 
 function install(pgModule) {
   const pg = pgModule || require('pg')
 
   if (pg[PATCHED]) {
+    preloadLog.logAlreadyPatched()
     return pg
   }
 
-  const hosts = validateEnvDbHost()
-  validateLookupUrl()
-  const grpcCredentials = getGrpcCredentialsFromEnv()
-  verifyLocalPostgresAtStartup(grpcCredentials)
+  preloadLog.logPreloadBegin()
+  const preloadStarted = performance.now()
 
-  if (!isGrpcHubReady()) {
-    settlePromiseSync(initGrpcHub(hosts, grpcCredentials))
+  try {
+    preloadLog.step('preload', () => {
+      runPreload()
+    })
+    preloadLog.logPatchApplied()
+    preloadLog.logPreloadComplete({
+      durationMs: Math.round(performance.now() - preloadStarted),
+    })
+  } catch (err) {
+    preloadLog.logPreloadFailed(err, {
+      durationMs: Math.round(performance.now() - preloadStarted),
+    })
+    throw err
   }
 
   const OriginalPool = pg.Pool

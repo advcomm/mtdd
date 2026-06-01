@@ -1,4 +1,5 @@
 const { settlePromiseSync } = require('./install-sync')
+const preloadLog = require('./preload-logger')
 
 const LOCALHOST = 'localhost'
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000
@@ -94,10 +95,14 @@ async function verifyLocalPostgres(credentials, options = {}) {
   const pg = options.pgModule ?? require('pg')
   const Client = pg.Client
   const client = new Client(buildLocalPostgresConfig(credentials))
+  const started = performance.now()
 
   try {
     await client.connect()
     await client.query('SELECT 1')
+    preloadLog.logLocalPostgresCheckComplete(
+      Math.round(performance.now() - started),
+    )
   } catch (err) {
     const { database, user, port } = credentials
     throw new Error(
@@ -113,7 +118,9 @@ async function verifyLocalPostgres(credentials, options = {}) {
 }
 
 function verifyLocalPostgresAtStartup(credentials) {
-  if (shouldSkipLocalPostgresCheck()) {
+  const skipped = shouldSkipLocalPostgresCheck()
+  preloadLog.logLocalPostgresCheck(skipped, credentials)
+  if (skipped) {
     return
   }
 
