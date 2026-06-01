@@ -39,7 +39,7 @@ describe('query classifier', () => {
 
   it('returns UNKNOWN for SELECT and classifies INSERT', () => {
     assert.deepEqual(classifyQuery('SELECT * FROM users'), {
-      commandType: 'UNKNOWN',
+      commandType: 'SELECT',
       hasReturning: false,
     })
 

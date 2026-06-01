@@ -42,12 +42,12 @@ describe('query classifier FUNCTION', () => {
 
   it('does not classify table SELECT as FUNCTION', () => {
     assert.deepEqual(classifyQuery('SELECT * FROM users WHERE id = $1'), {
-      commandType: 'UNKNOWN',
+      commandType: 'SELECT',
       hasReturning: false,
     })
 
     assert.deepEqual(classifyQuery('SELECT id, name FROM orders'), {
-      commandType: 'UNKNOWN',
+      commandType: 'SELECT',
       hasReturning: false,
     })
 

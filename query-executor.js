@@ -6,6 +6,7 @@ const {
   isCallQuery,
   isCallAllShards,
   isFunctionQuery,
+  hasTenantTid,
 } = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
@@ -205,6 +206,12 @@ async function fanOutQuery(meta, req, target) {
     )
   }
 
+  if (req.commandType === 'SELECT' && hasTenantTid(req)) {
+    throw new Error(
+      '@advcomm/mtdd: SELECT with tid cannot fan out; tid routes to a single shard.',
+    )
+  }
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
@@ -299,24 +306,12 @@ async function executeRoutedQuery(target, req) {
     return routeWithLookupTid(meta, req, target)
   }
 
-  if (req.tid) {
-    req.routing = 'single'
-    const hostIndex = await lookupHostIndex(req.tid, meta.hosts.length)
-    req.hostIndex = hostIndex
+  if (req.commandType === 'SELECT' && hasTenantTid(req)) {
+    return routeWithLookupTid(meta, req, target)
+  }
 
-    const selectRequest = {
-      hosts: meta.hosts,
-      strategy: 'lookup',
-      hostIndex,
-      selectedHost: meta.hosts[hostIndex],
-      tid: req.tid,
-      source: meta.kind === 'checkout' ? 'client' : meta.kind,
-      originalConfig: { ...meta.baseConfig, host: meta.hosts },
-    }
-
-    await hooks.onSelectHost(selectRequest, async () => hostIndex)
-
-    return queryOnHostIndex(meta, hostIndex, req, target)
+  if (hasTenantTid(req)) {
+    return routeWithLookupTid(meta, req, target)
   }
 
   if (meta.hosts.length === 1) {

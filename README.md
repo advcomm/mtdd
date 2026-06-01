@@ -83,6 +83,8 @@ const pool = new Pool({
 
 **Stored functions** (`SELECT … FROM fn(…)` or `SELECT fn(…)`) always require a **tenant id string** `tid`. Lookup resolves to one `host_index`; the shard `SELECT` result is returned unchanged. They never fan out.
 
+**SELECT** (table queries, not stored functions): with a **tenant id string** `tid`, lookup resolves to one `host_index` and the shard result is returned unchanged. Without `tid`, `SELECT` fans out to every shard and rows are merged (concat `rows`, sum `rowCount`).
+
 ### gRPC shard tunnels (startup)
 
 On preload, MTDD opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD_GRPC_PORT`, default `50051`). For each address it calls `Connect` with:
@@ -118,7 +120,7 @@ When a query fans out (no `tid`), MTDD classifies `req.text` and merges shard re
 | DML without `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | `[]` (always empty, like single-shard `pg`) |
 | DML with `RETURNING` | `DELETE` / `UPDATE` | Sum across shards | Concatenate shard rows in host-index order (0 → N−1) |
 
-Other statement types (e.g. `SELECT`) still use the generic merge (concat `rows`, sum `rowCount`) until dedicated handlers are added. `hooks.onQuery` can wrap `next()` to override any merge.
+`SELECT` without `tid` uses the generic merge (concat `rows`, sum `rowCount`). `SELECT` with `tid` is not merged (single shard). `hooks.onQuery` can wrap `next()` to override any merge.
 
 Helpers: `classifyQuery`, `mergeFanOutResults`, `mergeDeleteResults`, `mergeUpdateResults`, `mergeDmlResults` (package root exports).
 

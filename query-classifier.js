@@ -89,6 +89,13 @@ function classifyQuery(text) {
     }
   }
 
+  if (SELECT_PATTERN.test(normalized)) {
+    return {
+      commandType: 'SELECT',
+      hasReturning: false,
+    }
+  }
+
   return {
     commandType: 'UNKNOWN',
     hasReturning: false,
@@ -127,6 +134,17 @@ function isFunctionQuery(req) {
   return classifyQuery(req?.text).commandType === 'FUNCTION'
 }
 
+function isSelectQuery(req) {
+  if (req?.commandType === 'SELECT') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'SELECT'
+}
+
+function hasTenantTid(req) {
+  return req.tid !== undefined && req.tid !== null
+}
+
 module.exports = {
   classifyQuery,
   attachQueryClassification,
@@ -135,4 +153,6 @@ module.exports = {
   isCallQuery,
   isCallAllShards,
   isFunctionQuery,
+  isSelectQuery,
+  hasTenantTid,
 }
