@@ -1,19 +1,13 @@
 const { toSql } = require('pgsql-ast-parser')
 const { MtddSqlParseError } = require('./sql-parse')
-
-const SUPPORTED_AGGREGATE_FUNCTIONS = new Set([
-  'sum',
-  'min',
-  'max',
-  'count',
-  'avg',
-  'stddev',
-  'stddev_pop',
-  'stddev_samp',
-  'var',
-  'var_pop',
-  'var_samp',
-])
+const {
+  POSTGRES_SCATTER_GATHER_AGGREGATES,
+  aggregateFunctionName,
+  isWindowCall,
+  isRejectedFanOutAggregate,
+  isScatterGatherAggregate,
+  validateScatterGatherAggregateCall,
+} = require('./postgres-aggregate-functions')
 
 function previewSql(sql) {
   if (typeof sql !== 'string') {
@@ -116,16 +110,41 @@ function stripGlobalSortFromSelect(select) {
   delete select.limit
 }
 
-function aggregateFunctionName(callNode) {
-  if (callNode?.type !== 'call' || !callNode.function?.name) {
-    return null
+function exprContainsSubquery(expr) {
+  if (!expr || typeof expr !== 'object') {
+    return false
   }
-  return String(callNode.function.name).toLowerCase()
-}
-
-function isSupportedAggregateCall(node) {
-  const name = aggregateFunctionName(node)
-  return name !== null && SUPPORTED_AGGREGATE_FUNCTIONS.has(name)
+  if (expr.type === 'select') {
+    return true
+  }
+  if (expr.type === 'call') {
+    if (exprContainsSubquery(expr.filter)) {
+      return true
+    }
+    if (expr.withinGroup && exprContainsSubquery(expr.withinGroup.by)) {
+      return true
+    }
+    for (const entry of expr.orderBy ?? []) {
+      if (exprContainsSubquery(entry?.by)) {
+        return true
+      }
+    }
+    for (const arg of expr.args ?? []) {
+      if (exprContainsSubquery(arg)) {
+        return true
+      }
+    }
+    return false
+  }
+  if (expr.type === 'binary') {
+    return (
+      exprContainsSubquery(expr.left) || exprContainsSubquery(expr.right)
+    )
+  }
+  if (expr.type === 'unary') {
+    return exprContainsSubquery(expr.argument)
+  }
+  return false
 }
 
 function collectRefsFromExpr(expr, refs) {
@@ -144,6 +163,13 @@ function collectRefsFromExpr(expr, refs) {
     for (const arg of expr.args ?? []) {
       collectRefsFromExpr(arg, refs)
     }
+    collectRefsFromExpr(expr.filter, refs)
+    for (const entry of expr.orderBy ?? []) {
+      collectRefsFromExpr(entry?.by, refs)
+    }
+    if (expr.withinGroup) {
+      collectRefsFromExpr(expr.withinGroup.by, refs)
+    }
     return
   }
 
@@ -158,13 +184,165 @@ function collectRefsFromExpr(expr, refs) {
   }
 }
 
+function collectRefsFromAggregateCall(callNode, refs) {
+  collectRefsFromExpr(callNode, refs)
+}
+
+function walkAllCalls(expr, calls) {
+  if (!expr || typeof expr !== 'object') {
+    return
+  }
+
+  if (expr.type === 'call') {
+    calls.push(expr)
+    for (const arg of expr.args ?? []) {
+      walkAllCalls(arg, calls)
+    }
+    walkAllCalls(expr.filter, calls)
+    for (const entry of expr.orderBy ?? []) {
+      walkAllCalls(entry?.by, calls)
+    }
+    if (expr.withinGroup) {
+      walkAllCalls(expr.withinGroup.by, calls)
+    }
+    return
+  }
+
+  if (expr.type === 'binary') {
+    walkAllCalls(expr.left, calls)
+    walkAllCalls(expr.right, calls)
+    return
+  }
+
+  if (expr.type === 'unary') {
+    walkAllCalls(expr.argument, calls)
+  }
+}
+
+function collectAllCallsFromSelect(select) {
+  const calls = []
+  for (const column of select.columns ?? []) {
+    walkAllCalls(column?.expr, calls)
+  }
+  if (select.having) {
+    walkAllCalls(select.having, calls)
+  }
+  for (const entry of select.orderBy ?? []) {
+    walkAllCalls(entry?.by, calls)
+  }
+  return calls
+}
+
+function groupByContainsExpr(groupBy, expr) {
+  const key = JSON.stringify(expr)
+  return (groupBy ?? []).some((entry) => JSON.stringify(entry) === key)
+}
+
+function assertFanOutAggregateSupport(select, text) {
+  const calls = collectAllCallsFromSelect(select)
+
+  for (const call of calls) {
+    if (isWindowCall(call)) {
+      throw new MtddSqlParseError(
+        `@advcomm/mtdd: window functions are not supported for fan-out across shards. SQL: ${previewSql(text)}`,
+        text,
+      )
+    }
+    if (isRejectedFanOutAggregate(call)) {
+      const name = aggregateFunctionName(call)
+      throw new MtddSqlParseError(
+        `@advcomm/mtdd: aggregate function "${name}" is not supported for fan-out across shards. SQL: ${previewSql(text)}`,
+        text,
+      )
+    }
+  }
+
+  for (const call of calls) {
+    if (!isScatterGatherAggregate(call)) {
+      continue
+    }
+    try {
+      validateScatterGatherAggregateCall(call)
+    } catch (err) {
+      throw new MtddSqlParseError(
+        `@advcomm/mtdd: ${err.message}. SQL: ${previewSql(text)}`,
+        text,
+      )
+    }
+    if (exprContainsSubquery(call)) {
+      throw new MtddSqlParseError(
+        `@advcomm/mtdd: aggregate expressions with subqueries are not supported for fan-out across shards. SQL: ${previewSql(text)}`,
+        text,
+      )
+    }
+  }
+
+  const groupBy = select.groupBy ?? []
+  if (groupBy.length === 0) {
+    return
+  }
+
+  function walkUnknownAggregateCalls(expr, insideSupportedAggregate) {
+    if (!expr || typeof expr !== 'object') {
+      return
+    }
+    if (expr.type === 'call') {
+      const name = aggregateFunctionName(expr)
+      const supported = isScatterGatherAggregate(expr)
+      if (
+        !insideSupportedAggregate &&
+        name !== null &&
+        !POSTGRES_SCATTER_GATHER_AGGREGATES.has(name) &&
+        expr.withinGroup == null
+      ) {
+        throw new MtddSqlParseError(
+          `@advcomm/mtdd: aggregate function "${name}" is not supported for fan-out across shards. SQL: ${previewSql(text)}`,
+          text,
+        )
+      }
+      const nestedInside = insideSupportedAggregate || supported
+      for (const arg of expr.args ?? []) {
+        walkUnknownAggregateCalls(arg, nestedInside)
+      }
+      walkUnknownAggregateCalls(expr.filter, nestedInside)
+      for (const entry of expr.orderBy ?? []) {
+        walkUnknownAggregateCalls(entry?.by, nestedInside)
+      }
+      if (expr.withinGroup) {
+        walkUnknownAggregateCalls(expr.withinGroup.by, nestedInside)
+      }
+      return
+    }
+    if (expr.type === 'binary') {
+      walkUnknownAggregateCalls(expr.left, insideSupportedAggregate)
+      walkUnknownAggregateCalls(expr.right, insideSupportedAggregate)
+      return
+    }
+    if (expr.type === 'unary') {
+      walkUnknownAggregateCalls(expr.argument, insideSupportedAggregate)
+    }
+  }
+
+  for (const column of select.columns ?? []) {
+    const expr = column?.expr
+    if (groupByContainsExpr(groupBy, expr)) {
+      continue
+    }
+    walkUnknownAggregateCalls(expr, false)
+  }
+
+  if (select.having) {
+    walkUnknownAggregateCalls(select.having, false)
+  }
+}
+
 function walkExprForAggregates(expr, found) {
   if (!expr || typeof expr !== 'object') {
     return
   }
 
   if (expr.type === 'call') {
-    if (isSupportedAggregateCall(expr)) {
+    if (isScatterGatherAggregate(expr)) {
       found.push(expr)
     }
     for (const arg of expr.args ?? []) {
@@ -193,6 +371,28 @@ function selectHasSupportedAggregates(select) {
     walkExprForAggregates(select.having, aggregates)
   }
   return aggregates.length > 0
+}
+
+function selectHasGroupByWithColumnCalls(select) {
+  if (!Array.isArray(select.groupBy) || select.groupBy.length === 0) {
+    return false
+  }
+  return (select.columns ?? []).some((column) => column?.expr?.type === 'call')
+}
+
+function selectRequiresFanOutValidation(select) {
+  if (selectHasOrderBy(select) || selectHasSupportedAggregates(select)) {
+    return true
+  }
+  if (selectHasGroupByWithColumnCalls(select)) {
+    return true
+  }
+  return collectAllCallsFromSelect(select).some(
+    (call) =>
+      isWindowCall(call) ||
+      isRejectedFanOutAggregate(call) ||
+      isScatterGatherAggregate(call),
+  )
 }
 
 function columnKey(column) {
@@ -236,9 +436,7 @@ function buildRowLevelColumns(select) {
 
     if (aggregates.length > 0) {
       for (const aggregate of aggregates) {
-        for (const arg of aggregate.args ?? []) {
-          collectRefsFromExpr(arg, refNames)
-        }
+        collectRefsFromAggregateCall(aggregate, refNames)
       }
       continue
     }
@@ -254,9 +452,7 @@ function buildRowLevelColumns(select) {
     const havingAggregates = []
     walkExprForAggregates(select.having, havingAggregates)
     for (const aggregate of havingAggregates) {
-      for (const arg of aggregate.args ?? []) {
-        collectRefsFromExpr(arg, refNames)
-      }
+      collectRefsFromAggregateCall(aggregate, refNames)
     }
   }
 
@@ -300,6 +496,11 @@ function splitSelectForLocalFanOut(text) {
   }
 
   const { stmt, select } = parseSelectStatement(text)
+
+  if (selectRequiresFanOutValidation(select)) {
+    assertFanOutAggregateSupport(select, text)
+  }
+
   const hasOrderBy = selectHasOrderBy(select)
   const hasAggregates = selectHasSupportedAggregates(select)
 
@@ -361,5 +562,7 @@ module.exports = {
   isSimpleSingleTableFrom,
   tableRefName,
   buildRowLevelColumns,
-  SUPPORTED_AGGREGATE_FUNCTIONS,
+  assertFanOutAggregateSupport,
+  POSTGRES_SCATTER_GATHER_AGGREGATES,
+  SUPPORTED_AGGREGATE_FUNCTIONS: POSTGRES_SCATTER_GATHER_AGGREGATES,
 }

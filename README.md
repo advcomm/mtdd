@@ -87,6 +87,8 @@ const pool = new Pool({
 
 **SELECT** (table queries, not stored functions): with a **tenant id string** `tid`, lookup resolves to one `host_index` and the shard result is returned unchanged. Without `tid`, `SELECT` fans out to every shard and rows are merged (concat `rows`, sum `rowCount`).
 
+**SELECT with `ORDER BY` or supported aggregates** (no `tid`): shards return row-level columns; rows are loaded into a **localhost temp table** and the original SQL is re-run for global `ORDER BY`, `GROUP BY`, and aggregates. Supported built-ins include `sum`, `min`, `max`, `count`, `avg`, `bool_and` / `bool_or`, statistical (`stddev`, `var`, `corr`, `regr_*`, …), and `range_*` aggregates. **Rejected** for fan-out: window functions (`OVER`), `any_value`, hypothetical-set aggregates (`rank`, `dense_rank`, `percent_rank`, `cume_dist`), order-sensitive aggregates (`string_agg`, `json_*`, `array_agg`, `xmlagg`, …) without `ORDER BY` inside the aggregate, user-defined aggregates, and subqueries inside aggregate arguments.
+
 ### gRPC shard tunnels (startup)
 
 On preload, MTDD verifies **PostgreSQL on `localhost`** using `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT` from the environment (`DB_HOST` is ignored for this probe). Startup fails if `SELECT 1` cannot be completed. Set `MTDD_SKIP_LOCAL_PG_CHECK=1` or `MTDD_GRPC_MOCK=1` to skip (tests use the latter). Optional `MTDD_LOCAL_PG_CONNECT_TIMEOUT_MS` (default `5000`).

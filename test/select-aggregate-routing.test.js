@@ -174,4 +174,59 @@ describe('SELECT aggregate fan-out routing', () => {
     assert.equal(result.rows.length, 2)
     assert.equal(result.rows[0].region, 'east')
   })
+
+  it('fans out bool_and via row-level projection then aggregates on localhost', async () => {
+    grpcState.selectFields = [{ name: 'ok', dataTypeID: 16 }]
+    grpcState.selectRowsByShard = [
+      [{ ok: true }, { ok: false }],
+      [{ ok: true }],
+    ]
+
+    localQueries.length = 0
+    setLocalPostgresClientFactory(async () => ({
+      query: async (sql, values) => {
+        localQueries.push({ sql, values: values ?? [] })
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+          return { command: sql, rowCount: 0, rows: [], fields: [] }
+        }
+        if (sql.startsWith('CREATE TEMP TABLE')) {
+          return { command: 'CREATE', rowCount: 0, rows: [], fields: [] }
+        }
+        if (sql.startsWith('INSERT INTO') || sql.includes('unnest')) {
+          return { command: 'INSERT', rowCount: 3, rows: [], fields: [] }
+        }
+        if (/bool_and\s*\(\s*ok\s*\)/i.test(sql)) {
+          return {
+            command: 'SELECT',
+            rowCount: 1,
+            oid: null,
+            fields: [{ name: 'bool_and', dataTypeID: 16 }],
+            rows: [{ bool_and: false }],
+          }
+        }
+        return { command: 'SELECT', rowCount: 0, rows: [], fields: [] }
+      },
+    }))
+
+    const { pg } = createMockPg()
+    install(pg)
+
+    const pool = new pg.Pool({
+      host: ['10.0.1.10', '10.0.1.11'],
+    })
+
+    const result = await pool.query('SELECT bool_and(ok) FROM metrics')
+
+    assert.equal(grpcState.queries.length, 2)
+    for (const q of grpcState.queries) {
+      assert.doesNotMatch(q.text, /bool_and/i)
+      assert.match(q.text, /\bok\b/i)
+    }
+
+    const aggregateQuery = localQueries.find((q) =>
+      /bool_and\s*\(\s*ok\s*\)/i.test(q.sql),
+    )
+    assert.ok(aggregateQuery, 'expected localhost bool_and re-query')
+    assert.equal(result.rows[0].bool_and, false)
+  })
 })

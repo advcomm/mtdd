@@ -117,4 +117,116 @@ describe('splitSelectForLocalFanOut aggregates', () => {
     const sql = 'SELECT id FROM users ORDER BY id'
     assert.deepEqual(splitSelectForOrderedFanOut(sql), splitSelectForLocalFanOut(sql))
   })
+
+  it('rewrites bool_and to row-level projection', () => {
+    const split = splitSelectForLocalFanOut('SELECT bool_and(ok) FROM t')
+    assert.equal(split.needsLocalMerge, true)
+    assert.match(split.fanOutText, /\bok\b/i)
+    assert.doesNotMatch(split.fanOutText, /bool_and/i)
+  })
+
+  it('rewrites string_agg when ORDER BY is inside the aggregate', () => {
+    const split = splitSelectForLocalFanOut(
+      "SELECT string_agg(name, ',' ORDER BY name) FROM t GROUP BY region",
+    )
+    assert.equal(split.needsLocalMerge, true)
+    assert.match(split.fanOutText, /name/i)
+    assert.doesNotMatch(split.fanOutText, /string_agg/i)
+  })
+
+  it('rewrites percentile_cont with WITHIN GROUP columns', () => {
+    const split = splitSelectForLocalFanOut(
+      'SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY amount) FROM orders',
+    )
+    assert.equal(split.needsLocalMerge, true)
+    assert.match(split.fanOutText, /amount/i)
+    assert.doesNotMatch(split.fanOutText, /percentile_cont/i)
+  })
+
+  it('rewrites corr and collects both argument columns', () => {
+    const split = splitSelectForLocalFanOut(
+      'SELECT corr(y, x) FROM metrics',
+    )
+    assert.match(split.fanOutText, /\by\b/i)
+    assert.match(split.fanOutText, /\bx\b/i)
+  })
+
+  it('collects FILTER and DISTINCT aggregate columns', () => {
+    const split = splitSelectForLocalFanOut(
+      'SELECT sum(amount) FILTER (WHERE active), count(DISTINCT user_id) FROM orders',
+    )
+    assert.match(split.fanOutText, /amount/i)
+    assert.match(split.fanOutText, /active/i)
+    assert.match(split.fanOutText, /user_id/i)
+  })
+
+  it('rejects window functions', () => {
+    assert.throws(
+      () => splitSelectForLocalFanOut('SELECT sum(x) OVER () FROM t'),
+      (err) => {
+        assert.equal(err.name, 'MtddSqlParseError')
+        assert.match(err.message, /window functions/i)
+        return true
+      },
+    )
+  })
+
+  it('rejects string_agg without per-aggregate ORDER BY', () => {
+    assert.throws(
+      () =>
+        splitSelectForLocalFanOut(
+          "SELECT string_agg(name, ',') FROM t GROUP BY region",
+        ),
+      (err) => {
+        assert.match(err.message, /string_agg.*ORDER BY within the aggregate/i)
+        return true
+      },
+    )
+  })
+
+  it('rejects any_value aggregate', () => {
+    assert.throws(
+      () => splitSelectForLocalFanOut('SELECT any_value(x) FROM t'),
+      (err) => {
+        assert.match(err.message, /any_value/i)
+        return true
+      },
+    )
+  })
+
+  it('rejects hypothetical-set rank aggregate', () => {
+    assert.throws(
+      () =>
+        splitSelectForLocalFanOut(
+          'SELECT rank(1) WITHIN GROUP (ORDER BY x) FROM t',
+        ),
+      (err) => {
+        assert.match(err.message, /\brank\b/i)
+        return true
+      },
+    )
+  })
+
+  it('rejects unknown user-defined aggregates with GROUP BY', () => {
+    assert.throws(
+      () =>
+        splitSelectForLocalFanOut(
+          'SELECT region, my_agg(amount) FROM orders GROUP BY region',
+        ),
+      (err) => {
+        assert.match(err.message, /my_agg/i)
+        return true
+      },
+    )
+  })
+
+  it('rejects subqueries inside aggregate arguments', () => {
+    assert.throws(
+      () => splitSelectForLocalFanOut('SELECT sum((SELECT 1)) FROM t'),
+      (err) => {
+        assert.match(err.message, /subqueries/i)
+        return true
+      },
+    )
+  })
 })
