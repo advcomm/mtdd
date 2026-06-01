@@ -33,7 +33,7 @@ describe('query classifier CALL', () => {
     assert.deepEqual(
       classifyQuery('SELECT * FROM calculate_commission($1, $2)'),
       {
-        commandType: 'UNKNOWN',
+        commandType: 'FUNCTION',
         hasReturning: false,
       },
     )

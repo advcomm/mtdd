@@ -79,7 +79,9 @@ const pool = new Pool({
 
 **INSERT** always requires `tid` (even on a single-host pool). Lookup resolves to exactly one `host_index`; the query runs on that shard only and the result is returned unchanged (including `RETURNING`). INSERT never fans out.
 
-**CALL** (stored procedures) requires `tid` to be set: a **tenant id string** routes via lookup to one `host_index` and returns that shard’s result unchanged; **`tid: null`** runs the procedure on **every** shard and returns an empty `CALL` result (`rowCount: 0`, no rows). Omitting `tid` is an error. Function-style `SELECT … FROM proc(…)` is not `CALL` and follows normal `tid` / fan-out rules.
+**CALL** (stored procedures) requires `tid` to be set: a **tenant id string** routes via lookup to one `host_index` and returns that shard’s result unchanged; **`tid: null`** runs the procedure on **every** shard and returns an empty `CALL` result (`rowCount: 0`, no rows). Omitting `tid` is an error.
+
+**Stored functions** (`SELECT … FROM fn(…)` or `SELECT fn(…)`) always require a **tenant id string** `tid`. Lookup resolves to one `host_index`; the shard `SELECT` result is returned unchanged. They never fan out.
 
 ### gRPC shard tunnels (startup)
 
@@ -232,7 +234,7 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
 | `lookup-client.js` | HTTP lookup client |
 | `query-executor.js` | Per-query shard routing |
-| `query-classifier.js` | SQL command detection (DELETE, UPDATE, INSERT, CALL, RETURNING, …) |
+| `query-classifier.js` | SQL command detection (DELETE, UPDATE, INSERT, CALL, FUNCTION, RETURNING, …) |
 | `merge-results.js` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
 | `host-policy.js` | `DB_HOST` validation |
 | `grpc-hub.js` | gRPC connect-all + `Query` routing |

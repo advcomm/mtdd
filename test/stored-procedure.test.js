@@ -43,17 +43,19 @@ describe('stored procedures', () => {
     assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [1, 99.5])
   })
 
-  it('passes function SELECT statements through unchanged', async () => {
+  it('passes function SELECT statements through unchanged to one shard', async () => {
     const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({ host: ['127.0.0.1', '127.0.0.2'] })
-    await pool.query({
+    const result = await pool.query({
       text: 'SELECT * FROM calculate_commission($1,$2)',
       values: ['order-1', 'PROMO'],
       tid: 'tenant-1',
     })
 
+    assert.equal(grpcState.queries.length, 1)
     assert.match(grpcState.queries[0].text, /calculate_commission/)
+    assert.equal(result.command, 'SELECT')
   })
 })

@@ -12,6 +12,38 @@ const INSERT_PATTERN =
 const CALL_PATTERN =
   /^\s*(?:WITH\s+[\s\S]+?\s+)?CALL\b/i
 
+const SELECT_PATTERN =
+  /^\s*(?:WITH\s+[\s\S]+?\s+)?SELECT\b/i
+
+// SET-returning / table functions: SELECT … FROM name(…)
+const FROM_STORED_FUNCTION_PATTERN =
+  /\bFROM\s+(?:ONLY\s+)?(?:(?:"[^"]+")|(?:'[^']+')|(?:`[^`]+`)|(?:(?:[a-zA-Z_][\w$]*\.)*[a-zA-Z_][\w$]*))\s*\(/i
+
+// Scalar functions: SELECT name(…) with no FROM clause
+const SELECT_SCALAR_FUNCTION_PATTERN =
+  /^\s*(?:WITH\s+[\s\S]+?\s+)?SELECT\s+(?:DISTINCT(?:\s+ON\s*\([^)]*\))?\s+)?(?:(?:[a-zA-Z_][\w$]*\.)*[a-zA-Z_][\w$]*)\s*\(/i
+
+function isStoredFunctionSelect(text) {
+  if (typeof text !== 'string' || text.trim() === '') {
+    return false
+  }
+
+  const normalized = text.trim()
+  if (!SELECT_PATTERN.test(normalized)) {
+    return false
+  }
+
+  if (FROM_STORED_FUNCTION_PATTERN.test(normalized)) {
+    return true
+  }
+
+  if (/\bFROM\b/i.test(normalized)) {
+    return false
+  }
+
+  return SELECT_SCALAR_FUNCTION_PATTERN.test(normalized)
+}
+
 function classifyQuery(text) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
@@ -50,6 +82,13 @@ function classifyQuery(text) {
     }
   }
 
+  if (isStoredFunctionSelect(normalized)) {
+    return {
+      commandType: 'FUNCTION',
+      hasReturning: false,
+    }
+  }
+
   return {
     commandType: 'UNKNOWN',
     hasReturning: false,
@@ -81,10 +120,19 @@ function isCallAllShards(req) {
   return isCallQuery(req) && req.tid === null
 }
 
+function isFunctionQuery(req) {
+  if (req?.commandType === 'FUNCTION') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'FUNCTION'
+}
+
 module.exports = {
   classifyQuery,
   attachQueryClassification,
+  isStoredFunctionSelect,
   isInsertQuery,
   isCallQuery,
   isCallAllShards,
+  isFunctionQuery,
 }

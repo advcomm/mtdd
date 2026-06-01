@@ -5,6 +5,7 @@ const {
   isInsertQuery,
   isCallQuery,
   isCallAllShards,
+  isFunctionQuery,
 } = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
@@ -43,6 +44,14 @@ function assertCallTid(req) {
   }
 }
 
+function assertFunctionRequiresTid(req) {
+  if (isFunctionQuery(req) && (req.tid === undefined || req.tid === null)) {
+    throw new Error(
+      '@advcomm/mtdd: stored function queries require a tenant tid so the lookup server can route to a single shard.',
+    )
+  }
+}
+
 function assertTransactionRouting(target, req) {
   const meta = getMtddMeta(target)
   if (!meta || meta.hosts.length <= 1) {
@@ -60,6 +69,11 @@ function assertTransactionRouting(target, req) {
     if (isCallQuery(req)) {
       throw new Error(
         '@advcomm/mtdd: CALL requires a tenant tid for shard routing, or tid: null to run on all shards.',
+      )
+    }
+    if (isFunctionQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: stored function queries require a tenant tid so the lookup server can route to a single shard.',
       )
     }
     if (isBeginQuery(req)) {
@@ -185,6 +199,12 @@ async function fanOutQuery(meta, req, target) {
     )
   }
 
+  if (req.commandType === 'FUNCTION') {
+    throw new Error(
+      '@advcomm/mtdd: stored function queries cannot fan out; provide a tenant tid for lookup routing.',
+    )
+  }
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
@@ -242,6 +262,7 @@ async function executeRoutedQuery(target, req) {
   attachQueryClassification(req)
   assertInsertRequiresTid(req)
   assertCallTid(req)
+  assertFunctionRequiresTid(req)
   assertTransactionRouting(target, req)
 
   if (isCallAllShards(req)) {
@@ -274,6 +295,10 @@ async function executeRoutedQuery(target, req) {
     return routeWithLookupTid(meta, req, target)
   }
 
+  if (req.commandType === 'FUNCTION') {
+    return routeWithLookupTid(meta, req, target)
+  }
+
   if (req.tid) {
     req.routing = 'single'
     const hostIndex = await lookupHostIndex(req.tid, meta.hosts.length)
@@ -303,6 +328,11 @@ async function executeRoutedQuery(target, req) {
     if (isCallQuery(req)) {
       throw new Error(
         '@advcomm/mtdd: CALL requires a tenant tid for shard routing, or tid: null to run on all shards.',
+      )
+    }
+    if (isFunctionQuery(req)) {
+      throw new Error(
+        '@advcomm/mtdd: stored function queries require a tenant tid so the lookup server can route to a single shard.',
       )
     }
     req.routing = 'single'

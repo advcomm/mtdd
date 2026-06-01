@@ -128,6 +128,12 @@ function mergeFanOutResults(req, results) {
     )
   }
 
+  if (classification.commandType === 'FUNCTION') {
+    throw new Error(
+      '@advcomm/mtdd: stored function results must not be merged; route with a tenant tid to a single shard.',
+    )
+  }
+
   return defaultMergeResults(results)
 }
 
