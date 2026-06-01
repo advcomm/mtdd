@@ -1,6 +1,7 @@
 const { validateEnvDbHost } = require('./host-policy')
 const { validateLookupUrl } = require('./lookup-policy')
 const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
+const { verifyLocalPostgresAtStartup } = require('./postgres-local')
 const { initGrpcHub, isGrpcHubReady } = require('./grpc-hub')
 const { settlePromiseSync } = require('./install-sync')
 const { getMtddContext } = require('./context')
@@ -25,6 +26,7 @@ function install(pgModule) {
   const hosts = validateEnvDbHost()
   validateLookupUrl()
   const grpcCredentials = getGrpcCredentialsFromEnv()
+  verifyLocalPostgresAtStartup(grpcCredentials)
 
   if (!isGrpcHubReady()) {
     settlePromiseSync(initGrpcHub(hosts, grpcCredentials))

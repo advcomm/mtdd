@@ -89,7 +89,9 @@ const pool = new Pool({
 
 ### gRPC shard tunnels (startup)
 
-On preload, MTDD opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD_GRPC_PORT`, default `50051`). For each address it calls `Connect` with:
+On preload, MTDD verifies **PostgreSQL on `localhost`** using `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT` from the environment (`DB_HOST` is ignored for this probe). Startup fails if `SELECT 1` cannot be completed. Set `MTDD_SKIP_LOCAL_PG_CHECK=1` or `MTDD_GRPC_MOCK=1` to skip (tests use the latter). Optional `MTDD_LOCAL_PG_CONNECT_TIMEOUT_MS` (default `5000`).
+
+MTDD then opens a **persistent gRPC client** to each IP in `DB_HOST` (port `MTDD_GRPC_PORT`, default `50051`). For each address it calls `Connect` with:
 
 | Field | Source |
 |-------|--------|
@@ -257,6 +259,7 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `grpc-hub.js` | gRPC connect-all + `Query` routing |
 | `grpc-credentials.js` | `DB_NAME` / `DB_USER` / `DB_PASSWORD` for `Connect` |
 | `lookup-policy.js` | `MTDD_LOOKUP_URL` validation |
+| `postgres-local.js` | Startup `localhost` PostgreSQL connectivity check |
 | `normalize.js` | Query argument normalization |
 | `context.js` | `AsyncLocalStorage` helpers |
 | `hooks.js` | Hook entry points |

@@ -15,6 +15,7 @@ const { classifyQuery } = require('./query-classifier')
 const { MtddSqlParseError, parseQueryAst, classifyQueryAsync } = require('./sql-parse')
 const astClassifyCache = require('./ast-classify-cache')
 const sqlCachePolicy = require('./sql-cache-policy')
+const postgresLocal = require('./postgres-local')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
@@ -41,6 +42,8 @@ module.exports = {
   getSqlClassifyCacheTtlMs: sqlCachePolicy.getSqlClassifyCacheTtlMs,
   closeAstClassifyCache: astClassifyCache.closeAstClassifyCache,
   isAstClassifyRedisConfigured: astClassifyCache.isRedisConfigured,
+  verifyLocalPostgres: postgresLocal.verifyLocalPostgres,
+  shouldSkipLocalPostgresCheck: postgresLocal.shouldSkipLocalPostgresCheck,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,
