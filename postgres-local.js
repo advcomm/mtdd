@@ -68,6 +68,37 @@ function verifyLocalPostgresAtStartup(credentials) {
   settlePromiseSync(verifyLocalPostgres(credentials))
 }
 
+let localPostgresClientFactory = null
+
+function setLocalPostgresClientFactory(factory) {
+  localPostgresClientFactory = factory
+}
+
+function resetLocalPostgresClientFactory() {
+  localPostgresClientFactory = null
+}
+
+async function withLocalPostgresClient(credentials, fn) {
+  if (localPostgresClientFactory) {
+    const client = await localPostgresClientFactory(credentials)
+    return fn(client)
+  }
+
+  const pg = require('pg')
+  const client = new pg.Client(buildLocalPostgresConfig(credentials))
+  await client.connect()
+
+  try {
+    return await fn(client)
+  } finally {
+    try {
+      await client.end()
+    } catch {
+      // ignore shutdown errors
+    }
+  }
+}
+
 module.exports = {
   LOCALHOST,
   buildLocalPostgresConfig,
@@ -75,4 +106,7 @@ module.exports = {
   verifyLocalPostgresAtStartup,
   shouldSkipLocalPostgresCheck,
   getConnectTimeoutMs,
+  setLocalPostgresClientFactory,
+  resetLocalPostgresClientFactory,
+  withLocalPostgresClient,
 }

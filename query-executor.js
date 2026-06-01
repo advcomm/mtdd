@@ -10,6 +10,9 @@ const {
 } = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
+const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
+const { splitSelectForOrderedFanOut } = require('./select-order-fanout')
+const { mergeSelectResultsOnLocalPostgres } = require('./postgres-select-merge')
 const hooks = require('./hooks')
 const {
   getMtddMeta,
@@ -212,6 +215,13 @@ async function fanOutQuery(meta, req, target) {
     )
   }
 
+  if (req.commandType === 'SELECT') {
+    const split = splitSelectForOrderedFanOut(req.text)
+    if (split.needsLocalReorder) {
+      return fanOutSelectWithOrderBy(meta, req, split)
+    }
+  }
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
@@ -219,6 +229,32 @@ async function fanOutQuery(meta, req, target) {
   )
   req.shardResults = results
   return mergeFanOutResults(req, results)
+}
+
+async function fanOutSelectWithOrderBy(meta, req, split) {
+  const shardReq = {
+    ...req,
+    text: split.fanOutText,
+  }
+
+  const results = await Promise.all(
+    meta.hosts.map((_, hostIndex) =>
+      queryOnHostIndex(meta, hostIndex, shardReq, null),
+    ),
+  )
+
+  req.shardResults = results
+  req.localReorder = true
+  req.fanOutSql = split.fanOutText
+
+  const credentials = getGrpcCredentialsFromEnv()
+  return mergeSelectResultsOnLocalPostgres({
+    credentials,
+    tempTableName: split.tempTableName,
+    fullText: split.fullText,
+    shardResults: results,
+    values: req.values,
+  })
 }
 
 async function routeWithLookupTid(meta, req, target) {

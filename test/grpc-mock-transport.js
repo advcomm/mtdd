@@ -43,18 +43,26 @@ function createRecordingMockTransport(state) {
         return buildCallMockResult(shard, state)
       }
 
+      const fields = state.selectFields ?? []
+      const rowsByShard = state.selectRowsByShard
+      const rows = rowsByShard
+        ? (rowsByShard[shard.hostIndex] ??
+          rowsByShard[rowsByShard.length - 1] ??
+          [])
+        : [
+            {
+              host: shard.host,
+              host_index: request.host_index,
+              value: 1,
+            },
+          ]
+
       return {
         command: 'SELECT',
-        rowCount: 1,
+        rowCount: rows.length,
         oid: null,
-        fields: [],
-        rows: [
-          {
-            host: shard.host,
-            host_index: request.host_index,
-            value: 1,
-          },
-        ],
+        fields,
+        rows,
       }
     },
 
