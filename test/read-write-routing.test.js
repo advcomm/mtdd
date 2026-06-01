@@ -8,6 +8,23 @@ const {
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
+const { resetGrpcHub } = require('../grpc-hub')
+
+const shardHost = {
+  write: '10.0.1.10',
+  read: ['10.0.1.11', '10.0.1.12'],
+}
+
+async function setupRoutingTest(dbHostJson) {
+  const restoreEnv = withTestEnv({
+    DB_HOST: dbHostJson,
+  })
+  const grpcState = setupGrpcMock()
+  const lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
+  process.env.MTDD_LOOKUP_URL = lookup.url
+  hooks.onQuery = async (req, next) => next()
+  return { restoreEnv, grpcState, lookup }
+}
 
 describe('read/write host routing', () => {
   let restoreEnv
@@ -15,11 +32,6 @@ describe('read/write host routing', () => {
   let grpcState
   let warnMessages
   let originalWarn
-
-  const shardHost = {
-    write: '10.0.1.10',
-    read: ['10.0.1.11', '10.0.1.12'],
-  }
 
   beforeEach(async () => {
     warnMessages = []
@@ -29,50 +41,17 @@ describe('read/write host routing', () => {
       originalWarn(...args)
     }
 
-    restoreEnv = withTestEnv({
-      DB_HOST: JSON.stringify([shardHost]),
-    })
-    grpcState = setupGrpcMock()
-    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
-    process.env.MTDD_LOOKUP_URL = lookup.url
-    hooks.onQuery = async (req, next) => next()
+    const setup = await setupRoutingTest(JSON.stringify([shardHost]))
+    restoreEnv = setup.restoreEnv
+    grpcState = setup.grpcState
+    lookup = setup.lookup
   })
 
   afterEach(async () => {
     console.warn = originalWarn
     await lookup.close()
     restoreEnv()
-  })
-
-  it('uses the same IP for write and SELECT when host entry is a string', async () => {
-    restoreEnv()
-    restoreEnv = withTestEnv({
-      DB_HOST: '["10.0.1.10"]',
-    })
-    grpcState = setupGrpcMock()
-    lookup = await createMockLookupServer(() => ({ hostIndex: 0 }))
-    process.env.MTDD_LOOKUP_URL = lookup.url
-
-    const { pg } = createMockPg()
-    install(pg)
-
-    const pool = new pg.Pool({ host: ['10.0.1.10'] })
-
-    grpcState.queries.length = 0
-    await pool.query('SELECT 1')
-    await pool.query({
-      text: 'INSERT INTO users (id) VALUES ($1)',
-      values: [1],
-      tid: 'tenant-a',
-    })
-
-    assert.equal(grpcState.connections.length, 1)
-    assert.equal(grpcState.connections[0].host, '10.0.1.10')
-    assert.equal(grpcState.connections[0].role, 'write')
-
-    assert.equal(grpcState.queries.length, 2)
-    assert.equal(grpcState.queries[0].host, '10.0.1.10')
-    assert.equal(grpcState.queries[1].host, '10.0.1.10')
+    await require('../postgres-local').resetLocalPostgresPool()
   })
 
   it('connects write and all read endpoints at startup', () => {
@@ -132,16 +111,68 @@ describe('read/write host routing', () => {
     assert.equal(grpcState.queries[0].role, 'write')
     assert.equal(grpcState.queries[0].host, shardHost.write)
   })
+})
+
+describe('read/write host routing string shard entry', () => {
+  let restoreEnv
+  let lookup
+  let grpcState
+
+  beforeEach(async () => {
+    const setup = await setupRoutingTest('["10.0.1.10"]')
+    restoreEnv = setup.restoreEnv
+    grpcState = setup.grpcState
+    lookup = setup.lookup
+  })
+
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
+    await require('../postgres-local').resetLocalPostgresPool()
+  })
+
+  it('uses the same IP for write and SELECT when host entry is a string', async () => {
+    const { pg } = createMockPg()
+    install(pg)
+
+    const pool = new pg.Pool({ host: ['10.0.1.10'] })
+
+    grpcState.queries.length = 0
+    await pool.query('SELECT 1')
+    await pool.query({
+      text: 'INSERT INTO users (id) VALUES ($1)',
+      values: [1],
+      tid: 'tenant-a',
+    })
+
+    assert.equal(grpcState.connections.length, 1)
+    assert.equal(grpcState.connections[0].host, '10.0.1.10')
+    assert.equal(grpcState.connections[0].role, 'write')
+
+    assert.equal(grpcState.queries.length, 2)
+    assert.equal(grpcState.queries[0].host, '10.0.1.10')
+    assert.equal(grpcState.queries[1].host, '10.0.1.10')
+  })
+})
+
+describe('read/write host routing alternate shard layouts', () => {
+  let restoreEnv
+  let lookup
+  let grpcState
+
+  afterEach(async () => {
+    await lookup.close()
+    restoreEnv()
+    await require('../postgres-local').resetLocalPostgresPool()
+  })
 
   it('routes UPDATE through write endpoints on fan-out', async () => {
-    restoreEnv()
-    restoreEnv = withTestEnv({
-      DB_HOST: JSON.stringify([
-        shardHost,
-        { write: '10.0.2.10', read: ['10.0.2.11'] },
-      ]),
-    })
-    grpcState = setupGrpcMock()
+    const setup = await setupRoutingTest(
+      JSON.stringify([shardHost, { write: '10.0.2.10', read: ['10.0.2.11'] }]),
+    )
+    restoreEnv = setup.restoreEnv
+    grpcState = setup.grpcState
+    lookup = setup.lookup
 
     const { pg } = createMockPg()
     install(pg)
@@ -150,7 +181,6 @@ describe('read/write host routing', () => {
       host: [shardHost, { write: '10.0.2.10', read: ['10.0.2.11'] }],
     })
 
-    grpcState.queries.length = 0
     await pool.query('UPDATE users SET active = false WHERE id > 0')
     const updateQueries = grpcState.queries.filter((q) =>
       q.text.startsWith('UPDATE'),
@@ -164,11 +194,12 @@ describe('read/write host routing', () => {
   })
 
   it('uses write for SELECT when no read endpoints connected', async () => {
-    restoreEnv()
-    restoreEnv = withTestEnv({
-      DB_HOST: JSON.stringify([{ write: '10.0.1.10', read: [] }]),
-    })
-    grpcState = setupGrpcMock()
+    const setup = await setupRoutingTest(
+      JSON.stringify([{ write: '10.0.1.10', read: [] }]),
+    )
+    restoreEnv = setup.restoreEnv
+    grpcState = setup.grpcState
+    lookup = setup.lookup
 
     const { pg } = createMockPg()
     install(pg)
@@ -177,7 +208,6 @@ describe('read/write host routing', () => {
       host: [{ write: '10.0.1.10', read: [] }],
     })
 
-    grpcState.queries.length = 0
     await pool.query('SELECT 1')
 
     assert.equal(grpcState.queries.length, 1)
@@ -185,100 +215,110 @@ describe('read/write host routing', () => {
   })
 
   it('warns when a read endpoint fails to connect but still starts', async () => {
-    warnMessages.length = 0
-    restoreEnv()
+    const warnMessages = []
+    const originalWarn = console.warn
+    console.warn = (...args) => {
+      warnMessages.push(args.join(' '))
+      originalWarn(...args)
+    }
 
-    const { getWriteHost, getReadHosts } = require('../host-config')
-    const { warnReadConnectFailure, resetGrpcHub, useMockTransport, initGrpcHub } =
-      require('../grpc-hub')
-    const { validateEnvDbHost } = require('../host-policy')
-    const { getGrpcCredentialsFromEnv } = require('../grpc-credentials')
-    const { settlePromiseSync } = require('../install-sync')
-    const { createRecordingMockTransport } = require('./grpc-mock-transport')
+    try {
+      const setup = await setupRoutingTest(
+        JSON.stringify([
+          { write: '10.0.1.10', read: ['10.0.1.11', '10.0.1.12'] },
+        ]),
+      )
+      restoreEnv = setup.restoreEnv
+      lookup = setup.lookup
 
-    restoreEnv = withTestEnv({
-      DB_HOST: JSON.stringify([
-        { write: '10.0.1.10', read: ['10.0.1.11', '10.0.1.12'] },
-      ]),
-    })
+      const { getWriteHost, getReadHosts } = require('../host-config')
+      const { warnReadConnectFailure, useMockTransport, initGrpcHub } =
+        require('../grpc-hub')
+      const { validateEnvDbHost } = require('../host-policy')
+      const { getGrpcCredentialsFromEnv } = require('../grpc-credentials')
+      const { settlePromiseSync } = require('../install-sync')
+      const { createRecordingMockTransport } = require('./grpc-mock-transport')
 
-    const state = { connections: [], queries: [] }
-    resetGrpcHub()
-    useMockTransport({
-      ...createRecordingMockTransport(state),
-      async connectAll(hosts, credentials) {
-        state.connections = []
-        const shards = []
+      const state = { connections: [], queries: [] }
+      resetGrpcHub()
+      useMockTransport({
+        ...createRecordingMockTransport(state),
+        async connectAll(hosts, credentials) {
+          state.connections = []
+          const shards = []
 
-        for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-          const entry =
-            typeof hosts[hostIndex] === 'string'
-              ? { write: hosts[hostIndex], read: [] }
-              : hosts[hostIndex]
-          const writeHost = getWriteHost(entry)
-          const write = {
-            host: writeHost,
-            hostIndex,
-            role: 'write',
-            credentials: { ...credentials },
-            client: { mock: true },
-          }
-          state.connections.push(write)
-
-          const reads = []
-          for (const readHost of getReadHosts(entry)) {
-            if (readHost === '10.0.1.12') {
-              warnReadConnectFailure(
-                writeHost,
-                hostIndex,
-                readHost,
-                new Error('connection refused'),
-              )
-              continue
-            }
-            const readEndpoint = {
-              host: readHost,
+          for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+            const entry =
+              typeof hosts[hostIndex] === 'string'
+                ? { write: hosts[hostIndex], read: [] }
+                : hosts[hostIndex]
+            const writeHost = getWriteHost(entry)
+            const write = {
+              host: writeHost,
               hostIndex,
-              role: 'read',
+              role: 'write',
               credentials: { ...credentials },
               client: { mock: true },
             }
-            reads.push(readEndpoint)
-            state.connections.push(readEndpoint)
+            state.connections.push(write)
+
+            const reads = []
+            for (const readHost of getReadHosts(entry)) {
+              if (readHost === '10.0.1.12') {
+                warnReadConnectFailure(
+                  writeHost,
+                  hostIndex,
+                  readHost,
+                  new Error('connection refused'),
+                )
+                continue
+              }
+              const readEndpoint = {
+                host: readHost,
+                hostIndex,
+                role: 'read',
+                credentials: { ...credentials },
+                client: { mock: true },
+              }
+              reads.push(readEndpoint)
+              state.connections.push(readEndpoint)
+            }
+
+            shards.push({
+              hostIndex,
+              write,
+              reads,
+              readCounter: 0,
+              host: writeHost,
+            })
           }
 
-          shards.push({
-            hostIndex,
-            write,
-            reads,
-            readCounter: 0,
-            host: writeHost,
-          })
-        }
+          return shards
+        },
+      })
 
-        return shards
-      },
-    })
+      settlePromiseSync(initGrpcHub(validateEnvDbHost(), getGrpcCredentialsFromEnv()))
 
-    settlePromiseSync(initGrpcHub(validateEnvDbHost(), getGrpcCredentialsFromEnv()))
+      assert.ok(
+        warnMessages.some((m) => /read host 10\.0\.1\.12/i.test(m)),
+        'expected warning about failed read host',
+      )
 
-    assert.ok(
-      warnMessages.some((m) => /read host 10\.0\.1\.12/i.test(m)),
-      'expected warning about failed read host',
-    )
+      const { pg } = createMockPg()
+      install(pg)
 
-    const { pg } = createMockPg()
-    install(pg)
+      const pool = new pg.Pool({
+        host: [{ write: '10.0.1.10', read: ['10.0.1.11', '10.0.1.12'] }],
+      })
 
-    const pool = new pg.Pool({
-      host: [{ write: '10.0.1.10', read: ['10.0.1.11', '10.0.1.12'] }],
-    })
+      await pool.query('SELECT 1')
+      await pool.query('SELECT 2')
 
-    await pool.query('SELECT 1')
-    await pool.query('SELECT 2')
-
-    const selectHosts = state.queries.map((q) => q.host)
-    assert.deepEqual(selectHosts, ['10.0.1.11', '10.0.1.11'])
-    assert.ok(!selectHosts.includes('10.0.1.12'))
+      const selectHosts = state.queries.map((q) => q.host)
+      assert.deepEqual(selectHosts, ['10.0.1.11', '10.0.1.11'])
+      assert.ok(!selectHosts.includes('10.0.1.12'))
+    } finally {
+      console.warn = originalWarn
+    }
   })
 })

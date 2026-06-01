@@ -262,6 +262,7 @@ async function fanOutSelectWithOrderBy(meta, req, split) {
     fullText: split.fullText,
     shardResults: results,
     values: req.values,
+    orderBy: split.orderBy,
   })
 }
 

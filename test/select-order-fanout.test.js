@@ -57,8 +57,8 @@ describe('rewriteQueryTableName', () => {
     const sql =
       'SELECT id FROM users WHERE active = true ORDER BY id DESC LIMIT 5'
     const rewritten = rewriteQueryTableName(sql, 'users', 'users_mtdd_abcd')
-    assert.match(rewritten, /FROM "users_mtdd_abcd"/i)
-    assert.doesNotMatch(rewritten, /\bFROM users\b/i)
+    assert.match(rewritten, /FROM users_mtdd_abcd/i)
+    assert.doesNotMatch(rewritten, /\bFROM users\b(?!_mtdd)/i)
     assert.match(rewritten, /ORDER BY id DESC/i)
   })
 })

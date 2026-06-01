@@ -2,6 +2,7 @@ const { settlePromiseSync } = require('./install-sync')
 
 const LOCALHOST = 'localhost'
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000
+const DEFAULT_POOL_MAX = 4
 
 function getConnectTimeoutMs() {
   const raw = process.env.MTDD_LOCAL_PG_CONNECT_TIMEOUT_MS
@@ -17,6 +18,20 @@ function getConnectTimeoutMs() {
   }
 
   return timeoutMs
+}
+
+function getPoolMax() {
+  const raw = process.env.MTDD_LOCAL_PG_POOL_MAX
+  if (raw === undefined || raw === '') {
+    return DEFAULT_POOL_MAX
+  }
+  const max = Number(raw)
+  if (!Number.isFinite(max) || max <= 0) {
+    throw new Error(
+      `MTDD_LOCAL_PG_POOL_MAX must be a positive number. Received: ${raw}`,
+    )
+  }
+  return max
 }
 
 function shouldSkipLocalPostgresCheck() {
@@ -37,10 +52,47 @@ function buildLocalPostgresConfig(credentials) {
   }
 }
 
+function poolCacheKey(credentials) {
+  return `${LOCALHOST}:${credentials.port}:${credentials.database}:${credentials.user}`
+}
+
+let localPostgresPool = null
+let localPostgresPoolKey = null
+
+function getLocalPostgresPool(credentials) {
+  const key = poolCacheKey(credentials)
+  if (localPostgresPool && localPostgresPoolKey === key) {
+    return localPostgresPool
+  }
+
+  if (localPostgresPool) {
+    localPostgresPool.end().catch(() => {})
+    localPostgresPool = null
+    localPostgresPoolKey = null
+  }
+
+  const pg = require('pg')
+  localPostgresPool = new pg.Pool({
+    ...buildLocalPostgresConfig(credentials),
+    max: getPoolMax(),
+  })
+  localPostgresPoolKey = key
+  return localPostgresPool
+}
+
+async function resetLocalPostgresPool() {
+  if (!localPostgresPool) {
+    return
+  }
+  const pool = localPostgresPool
+  localPostgresPool = null
+  localPostgresPoolKey = null
+  await pool.end().catch(() => {})
+}
+
 async function verifyLocalPostgres(credentials, options = {}) {
   const pg = options.pgModule ?? require('pg')
   const Client = pg.Client
-
   const client = new Client(buildLocalPostgresConfig(credentials))
 
   try {
@@ -84,28 +136,26 @@ async function withLocalPostgresClient(credentials, fn) {
     return fn(client)
   }
 
-  const pg = require('pg')
-  const client = new pg.Client(buildLocalPostgresConfig(credentials))
-  await client.connect()
+  const pool = getLocalPostgresPool(credentials)
+  const client = await pool.connect()
 
   try {
     return await fn(client)
   } finally {
-    try {
-      await client.end()
-    } catch {
-      // ignore shutdown errors
-    }
+    client.release()
   }
 }
 
 module.exports = {
   LOCALHOST,
   buildLocalPostgresConfig,
+  getLocalPostgresPool,
+  resetLocalPostgresPool,
   verifyLocalPostgres,
   verifyLocalPostgresAtStartup,
   shouldSkipLocalPostgresCheck,
   getConnectTimeoutMs,
+  getPoolMax,
   setLocalPostgresClientFactory,
   resetLocalPostgresClientFactory,
   withLocalPostgresClient,

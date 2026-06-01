@@ -1,8 +1,14 @@
 const { randomBytes } = require('node:crypto')
+const { withLocalPostgresClient } = require('./postgres-local')
 const {
-  buildLocalPostgresConfig,
-  withLocalPostgresClient,
-} = require('./postgres-local')
+  getUnnestMergeThreshold,
+  getCopyMergeThreshold,
+  getIndexMergeThreshold,
+} = require('./local-merge-policy')
+const {
+  rewriteQueryTableNameAst,
+  orderByColumnNames,
+} = require('./select-order-rewrite')
 
 const OID_TO_PG_TYPE = {
   16: 'boolean',
@@ -22,6 +28,8 @@ const OID_TO_PG_TYPE = {
   2950: 'uuid',
   3802: 'jsonb',
 }
+
+const INSERT_BATCH_SIZE = 500
 
 function quoteIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`
@@ -67,9 +75,36 @@ function buildInsertPlaceholders(rowCount, columnCount, startParam = 1) {
   return { sqlGroups: groups.join(', '), nextParam: param }
 }
 
-const INSERT_BATCH_SIZE = 500
+function formatCsvCell(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  if (typeof value === 'boolean') {
+    return value ? 't' : 'f'
+  }
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+  if (typeof value === 'object') {
+    const serialized = JSON.stringify(value)
+    return `"${serialized.replace(/"/g, '""')}"`
+  }
+  const text = String(value)
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`
+  }
+  return text
+}
 
-async function insertRows(client, tableName, fields, rows) {
+function buildCsvPayload(rows, fields) {
+  const lines = []
+  for (const row of rows) {
+    lines.push(fields.map((field) => formatCsvCell(row[field.name])).join(','))
+  }
+  return `${lines.join('\n')}\n`
+}
+
+async function insertRowsBatched(client, tableName, fields, rows) {
   if (rows.length === 0) {
     return
   }
@@ -97,6 +132,84 @@ async function insertRows(client, tableName, fields, rows) {
   }
 }
 
+async function insertRowsViaUnnest(client, tableName, fields, rows) {
+  if (rows.length === 0) {
+    return
+  }
+
+  const columnNames = fields.map((f) => quoteIdent(f.name))
+  const params = []
+  const unnestSelect = fields
+    .map((field) => {
+      const pgType = pgTypeForField(field)
+      const values = rows.map((row) => row[field.name])
+      params.push(values)
+      return `unnest($${params.length}::${pgType}[])`
+    })
+    .join(', ')
+
+  await client.query(
+    `INSERT INTO ${quoteIdent(tableName)} (${columnNames.join(', ')})
+     SELECT ${unnestSelect}`,
+    params,
+  )
+}
+
+async function insertRowsViaCopy(client, tableName, fields, rows) {
+  if (rows.length === 0) {
+    return
+  }
+
+  const { from: copyFrom } = require('pg-copy-streams')
+  const columnList = fields.map((f) => quoteIdent(f.name)).join(', ')
+  const copySql = `COPY ${quoteIdent(tableName)} (${columnList}) FROM STDIN WITH (FORMAT csv)`
+  const stream = client.query(copyFrom(copySql))
+  const payload = buildCsvPayload(rows, fields)
+
+  await new Promise((resolve, reject) => {
+    stream.on('error', reject)
+    stream.on('finish', resolve)
+    stream.end(payload)
+  })
+}
+
+async function loadRowsIntoTempTable(client, tableName, fields, rows) {
+  const rowCount = rows.length
+  const copyThreshold = getCopyMergeThreshold()
+  const unnestThreshold = getUnnestMergeThreshold()
+
+  if (rowCount >= copyThreshold) {
+    await insertRowsViaCopy(client, tableName, fields, rows)
+    return 'copy'
+  }
+
+  if (rowCount >= unnestThreshold) {
+    await insertRowsViaUnnest(client, tableName, fields, rows)
+    return 'unnest'
+  }
+
+  await insertRowsBatched(client, tableName, fields, rows)
+  return 'batch'
+}
+
+async function createOrderByIndex(client, tableName, orderBy, fields) {
+  const columns = orderByColumnNames(orderBy)
+  if (columns.length === 0) {
+    return
+  }
+
+  const fieldSet = new Set(fields.map((field) => field.name))
+  const indexColumns = columns.filter((column) => fieldSet.has(column))
+  if (indexColumns.length === 0) {
+    return
+  }
+
+  const indexList = indexColumns.map((column) => quoteIdent(column)).join(', ')
+  await client.query(
+    `CREATE INDEX ON ${quoteIdent(tableName)} (${indexList})`,
+  )
+}
+
 async function mergeSelectResultsOnLocalPostgres(options) {
   const {
     credentials,
@@ -104,6 +217,7 @@ async function mergeSelectResultsOnLocalPostgres(options) {
     fullText,
     shardResults,
     values,
+    orderBy,
   } = options
 
   const fields = pickFieldsFromShardResults(shardResults)
@@ -131,13 +245,35 @@ async function mergeSelectResultsOnLocalPostgres(options) {
         `CREATE TEMP TABLE ${quoteIdent(sessionTable)} (${columnDefs}) ON COMMIT DROP`,
       )
 
-      await insertRows(client, sessionTable, fields, rows)
+      const loadStrategy = await loadRowsIntoTempTable(
+        client,
+        sessionTable,
+        fields,
+        rows,
+      )
 
-      const localSql = rewriteQueryTableName(fullText, tempTableName, sessionTable)
+      if (
+        rows.length >= getIndexMergeThreshold() &&
+        Array.isArray(orderBy) &&
+        orderBy.length > 0
+      ) {
+        await createOrderByIndex(client, sessionTable, orderBy, fields)
+      }
+
+      const localSql = rewriteQueryTableNameAst(
+        fullText,
+        tempTableName,
+        sessionTable,
+      )
       const result = await client.query(localSql, values ?? [])
 
       await client.query('COMMIT')
-      return result
+
+      return {
+        ...result,
+        localMergeStrategy: 'postgres',
+        localLoadStrategy: loadStrategy,
+      }
     } catch (err) {
       try {
         await client.query('ROLLBACK')
@@ -150,14 +286,7 @@ async function mergeSelectResultsOnLocalPostgres(options) {
 }
 
 function rewriteQueryTableName(sql, fromName, toName) {
-  const escapedFrom = fromName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const pattern = new RegExp(
-    `\\b(FROM|JOIN)\\s+(${escapedFrom})(?=\\s|$|,|\\)|;)`,
-    'gi',
-  )
-  return sql.replace(pattern, (_match, keyword, table) => {
-    return `${keyword} ${quoteIdent(toName)}`
-  })
+  return rewriteQueryTableNameAst(sql, fromName, toName)
 }
 
 module.exports = {
@@ -165,6 +294,11 @@ module.exports = {
   quoteIdent,
   pgTypeForField,
   rewriteQueryTableName,
+  rewriteQueryTableNameAst,
   pickFieldsFromShardResults,
   collectMergedRows,
+  loadRowsIntoTempTable,
+  insertRowsBatched,
+  insertRowsViaUnnest,
+  insertRowsViaCopy,
 }

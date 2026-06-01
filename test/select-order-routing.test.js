@@ -55,8 +55,12 @@ describe('SELECT ORDER BY fan-out routing', () => {
           return { command: 'CREATE', rowCount: 0, rows: [], fields: [] }
         }
 
-        if (sql.startsWith('INSERT INTO')) {
+        if (sql.startsWith('INSERT INTO') || sql.includes('unnest')) {
           return { command: 'INSERT', rowCount: 3, rows: [], fields: [] }
+        }
+
+        if (sql.startsWith('CREATE INDEX')) {
+          return { command: 'CREATE', rowCount: 0, rows: [], fields: [] }
         }
 
         return {
@@ -75,6 +79,8 @@ describe('SELECT ORDER BY fan-out routing', () => {
 
   afterEach(async () => {
     resetLocalPostgresClientFactory()
+    const { resetLocalPostgresPool } = require('../postgres-local')
+    await resetLocalPostgresPool()
     await lookup.close()
     restoreEnv()
   })
@@ -99,7 +105,7 @@ describe('SELECT ORDER BY fan-out routing', () => {
 
     const finalQuery = localQueries.find((q) => /ORDER BY name ASC/i.test(q.sql))
     assert.ok(finalQuery, 'expected localhost reorder query')
-    assert.match(finalQuery.sql, /LIMIT 10/i)
+    assert.match(finalQuery.sql, /LIMIT\s*\(?\s*10\s*\)?/i)
     assert.match(finalQuery.sql, /users_mtdd_/i)
 
     assert.equal(result.rows.length, 2)

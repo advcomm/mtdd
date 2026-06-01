@@ -5,6 +5,7 @@ const {
   buildLocalPostgresConfig,
   verifyLocalPostgres,
   shouldSkipLocalPostgresCheck,
+  resetLocalPostgresPool,
   LOCALHOST,
 } = require('../postgres-local')
 
@@ -17,7 +18,8 @@ describe('postgres-local', () => {
     previousMock = process.env.MTDD_GRPC_MOCK
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await resetLocalPostgresPool()
     if (previousSkip === undefined) {
       delete process.env.MTDD_SKIP_LOCAL_PG_CHECK
     } else {

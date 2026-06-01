@@ -17,6 +17,7 @@ const { MtddSqlParseError, parseQueryAst, classifyQueryAsync } = require('./sql-
 const astClassifyCache = require('./ast-classify-cache')
 const sqlCachePolicy = require('./sql-cache-policy')
 const postgresLocal = require('./postgres-local')
+const localMergePolicy = require('./local-merge-policy')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
@@ -48,7 +49,13 @@ module.exports = {
   closeAstClassifyCache: astClassifyCache.closeAstClassifyCache,
   isAstClassifyRedisConfigured: astClassifyCache.isRedisConfigured,
   verifyLocalPostgres: postgresLocal.verifyLocalPostgres,
+  getLocalPostgresPool: postgresLocal.getLocalPostgresPool,
+  resetLocalPostgresPool: postgresLocal.resetLocalPostgresPool,
   shouldSkipLocalPostgresCheck: postgresLocal.shouldSkipLocalPostgresCheck,
+  getUnnestMergeThreshold: localMergePolicy.getUnnestMergeThreshold,
+  getCopyMergeThreshold: localMergePolicy.getCopyMergeThreshold,
+  getIndexMergeThreshold: localMergePolicy.getIndexMergeThreshold,
+  rewriteQueryTableNameAst: require('./select-order-rewrite').rewriteQueryTableNameAst,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,

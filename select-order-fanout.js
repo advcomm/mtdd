@@ -139,6 +139,8 @@ function splitSelectForOrderedFanOut(text) {
     fanOutText: toSql.statement(fanOutStmt),
     fullText: text,
     tempTableName: primaryTable.name,
+    orderBy: JSON.parse(JSON.stringify(select.orderBy)),
+    limit: select.limit ? JSON.parse(JSON.stringify(select.limit)) : null,
   }
 }
 
@@ -150,4 +152,5 @@ module.exports = {
   selectHasOffset,
   getPrimaryFromTable,
   isSimpleSingleTableFrom,
+  tableRefName,
 }
