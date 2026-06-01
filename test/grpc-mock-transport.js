@@ -1,3 +1,5 @@
+const { classifyQuery } = require('../query-classifier')
+
 function createRecordingMockTransport(state) {
   return {
     async connectAll(hosts, credentials) {
@@ -27,6 +29,11 @@ function createRecordingMockTransport(state) {
         ...request,
       })
 
+      const classification = classifyQuery(request.text)
+      if (classification.commandType === 'DELETE') {
+        return buildDeleteMockResult(shard, request, state, classification)
+      }
+
       return {
         command: 'SELECT',
         rowCount: 1,
@@ -45,6 +52,45 @@ function createRecordingMockTransport(state) {
     async disconnectAll(shards) {
       state.disconnected = (state.disconnected ?? 0) + shards.length
     },
+  }
+}
+
+function buildDeleteMockResult(shard, request, state, classification) {
+  const rowCounts = state.deleteRowCounts ?? [3, 2]
+  const rowCount =
+    rowCounts[shard.hostIndex] ??
+    rowCounts[rowCounts.length - 1] ??
+    0
+
+  if (!classification.hasReturning) {
+    return {
+      command: 'DELETE',
+      rowCount,
+      oid: null,
+      fields: [],
+      rows: state.forceDeleteRowsWithoutReturning
+        ? [{ id: 'stray' }]
+        : [],
+    }
+  }
+
+  const returningRowsByShard = state.deleteReturningRows ?? [
+    [{ id: 1 }, { id: 2 }],
+    [{ id: 3 }],
+  ]
+  const rows =
+    returningRowsByShard[shard.hostIndex] ??
+    returningRowsByShard[returningRowsByShard.length - 1] ??
+    []
+
+  return {
+    command: 'DELETE',
+    rowCount,
+    oid: null,
+    fields: state.deleteReturningFields ?? [
+      { name: 'id', dataTypeID: 23 },
+    ],
+    rows,
   }
 }
 

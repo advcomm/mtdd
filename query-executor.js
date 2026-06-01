@@ -1,5 +1,6 @@
 const { lookupHostIndex } = require('./lookup-client')
-const { defaultMergeResults } = require('./merge-results')
+const { mergeFanOutResults } = require('./merge-results')
+const { attachQueryClassification } = require('./query-classifier')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const hooks = require('./hooks')
@@ -139,13 +140,15 @@ async function queryOnHostIndex(meta, hostIndex, req, target) {
 }
 
 async function fanOutQuery(meta, req, target) {
+  attachQueryClassification(req)
+
   const results = await Promise.all(
     meta.hosts.map((_, hostIndex) =>
       queryOnHostIndex(meta, hostIndex, req, null),
     ),
   )
   req.shardResults = results
-  return defaultMergeResults(results)
+  return mergeFanOutResults(req, results)
 }
 
 async function executeRoutedQuery(target, req) {

@@ -3,7 +3,9 @@ const context = require('./context')
 const hooks = require('./hooks')
 const hostPolicy = require('./host-policy')
 const hostSelector = require('./host-selector')
-const { defaultMergeResults } = require('./merge-results')
+const { defaultMergeResults, mergeDeleteResults, mergeFanOutResults } =
+  require('./merge-results')
+const { classifyQuery } = require('./query-classifier')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
@@ -18,6 +20,9 @@ module.exports = {
   selectHost: hostSelector.selectHost,
   resetHostCounter: hostSelector.resetHostCounter,
   defaultMergeResults,
+  mergeDeleteResults,
+  mergeFanOutResults,
+  classifyQuery,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,
