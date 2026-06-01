@@ -1,6 +1,5 @@
 const { getWriteHost, getReadHosts } = require('../host-config')
 const { classifyQuery } = require('../query-classifier')
-const { usesArrowResultFormat } = require('../grpc-result-policy')
 const {
   encodePgResultAsChunks,
   decodeArrowStreamToPgResult,
@@ -65,10 +64,7 @@ function createRecordingMockTransport(state) {
       })
 
       const pgResult = buildMockPgResult(endpoint, request, state)
-      if (usesArrowResultFormat()) {
-        return decodeArrowStreamToPgResult(encodePgResultAsChunks(pgResult))
-      }
-      return pgResult
+      return decodeArrowStreamToPgResult(encodePgResultAsChunks(pgResult))
     },
 
     async disconnectAll(shards) {

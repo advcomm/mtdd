@@ -8,6 +8,7 @@ const {
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
+const { decodeQueryParamsForTest } = require('../grpc-arrow-codec')
 
 describe('query config tid', () => {
   let restoreEnv
@@ -48,6 +49,6 @@ describe('query config tid', () => {
     assert.equal(captured.source, 'pool.query')
     assert.equal(captured.routing, 'single')
     assert.equal(grpcState.queries[0].text, 'SELECT * FROM users')
-    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [])
+    assert.deepEqual(decodeQueryParamsForTest(grpcState.queries[0].params), [])
   })
 })

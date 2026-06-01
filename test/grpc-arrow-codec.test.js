@@ -8,21 +8,9 @@ const {
   CHUNK_KIND_SCHEMA,
   CHUNK_KIND_TRAILER,
 } = require('../grpc-arrow-codec')
-const { buildQueryRequestPayload } = require('../grpc-arrow-codec')
-const { resetPreloadLogConfigForTests } = require('../preload-logger')
+const { buildQueryRequestPayload, decodeQueryParamsForTest } = require('../grpc-arrow-codec')
 
 describe('grpc-arrow-codec', () => {
-  let restoreEnv
-
-  beforeEach(() => {
-    restoreEnv = snapshotEnv(['MTDD_GRPC_RESULT_FORMAT', 'MTDD_GRPC_MOCK'])
-    resetPreloadLogConfigForTests()
-  })
-
-  afterEach(() => {
-    restoreEnv()
-    resetPreloadLogConfigForTests()
-  })
 
   it('round-trips result schema and trailer flexbuffers metadata', () => {
     const schema = {
@@ -66,18 +54,16 @@ describe('grpc-arrow-codec', () => {
     assert.deepEqual(params[2].value, Buffer.from([1, 2, 3]))
   })
 
-  it('builds arrow query request payload when MTDD_GRPC_RESULT_FORMAT=arrow', () => {
-    process.env.MTDD_GRPC_RESULT_FORMAT = 'arrow'
-    resetPreloadLogConfigForTests()
+  it('builds libpq query request payload with params', () => {
     const payload = buildQueryRequestPayload(
       0,
       { text: 'SELECT $1', values: ['x'], types: [25] },
       'sess-1',
     )
-    assert.equal(payload.response_format, 'RESPONSE_FORMAT_ARROW')
     assert.equal(payload.params.length, 1)
-    assert.equal(payload.values_json, '')
+    assert.equal(payload.params[0].oid, 25)
     assert.equal(payload.session_id, 'sess-1')
+    assert.deepEqual(decodeQueryParamsForTest(payload.params), ['x'])
   })
 
   it('round-trips pg results through arrow IPC chunks', () => {
@@ -123,19 +109,3 @@ describe('grpc-arrow-codec', () => {
     )
   })
 })
-
-function snapshotEnv(keys) {
-  const previous = {}
-  for (const key of keys) {
-    previous[key] = process.env[key]
-  }
-  return () => {
-    for (const key of keys) {
-      if (previous[key] === undefined) {
-        delete process.env[key]
-      } else {
-        process.env[key] = previous[key]
-      }
-    }
-  }
-}

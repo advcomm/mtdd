@@ -8,6 +8,7 @@ const {
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
+const { decodeQueryParamsForTest } = require('../grpc-arrow-codec')
 
 describe('stored procedures', () => {
   let restoreEnv
@@ -40,7 +41,9 @@ describe('stored procedures', () => {
 
     assert.equal(grpcState.queries.length, 1)
     assert.equal(grpcState.queries[0].text, 'CALL create_invoice($1,$2)')
-    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [1, 99.5])
+    assert.deepEqual(decodeQueryParamsForTest(grpcState.queries[0].params), [
+      1, 99.5,
+    ])
   })
 
   it('passes function SELECT statements through unchanged to one shard', async () => {

@@ -132,19 +132,20 @@ NODE_ENV=production MTDD_LOG_BACKEND=otel node --require @advcomm/mtdd/register 
 
 Proto definition: [`proto/mtdd.proto`](proto/mtdd.proto).
 
-#### gRPC wire format (libpq + Arrow)
+#### gRPC wire format (libpq + Arrow streaming)
 
 | Piece | Format |
 |-------|--------|
 | **Connect** | libpq keywords in `ConnectRequest` (`dbname`, `user`, `password`, `port`, `host`, …) |
-| **Query (arrow)** | `QueryStream` with `PQexecParams`-style `params[]` (`oid`, `format` 0=text/1=binary, `value` bytes) |
-| **Query (legacy)** | Unary `Query` + `values_json` when `MTDD_GRPC_RESULT_FORMAT=json` |
+| **Query** | `QueryStream` with `PQexecParams`-style `params[]` (`oid`, `format` 0=text/1=binary, `value` bytes) |
 | **Result metadata** | FlexBuffers in `ResultChunk.flatbuffer_meta` ([`flatbuffers/result-meta-codec.js`](flatbuffers/result-meta-codec.js)) |
 | **Result rows** | Apache Arrow IPC in `ResultChunk.arrow_ipc` |
 
-Set `MTDD_GRPC_RESULT_FORMAT=arrow` to use `QueryStream` (requires shard servers implementing `QueryStream` and the `apache-arrow` package on the client). Default `json` keeps the legacy unary `Query` RPC.
+Shard agents must implement **`QueryStream` only** (unary `Query` + JSON `result_json` was removed). The client requires [`apache-arrow`](https://www.npmjs.com/package/apache-arrow) and [`flatbuffers`](https://www.npmjs.com/package/flatbuffers).
 
 Chunk sequence: `SCHEMA` → `BATCH`* → `TRAILER` (or `ERROR`). The Node client decodes Arrow batches into the same pg `Result` shape (`rows`, `fields`, `rowCount`) used by merge logic.
+
+**Breaking change:** upgrade shard servers before deploying a client build that uses this proto.
 
 **Not in v1:** Parse/Bind/Execute RPCs (prepared statements / portals).
 

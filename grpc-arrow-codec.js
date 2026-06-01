@@ -1,5 +1,4 @@
 const resultMeta = require('./flatbuffers/result-meta-codec')
-const { usesArrowResultFormat, protoResponseFormatEnum } = require('./grpc-result-policy')
 
 const CHUNK_KIND_SCHEMA = 'CHUNK_KIND_SCHEMA'
 const CHUNK_KIND_BATCH = 'CHUNK_KIND_BATCH'
@@ -11,7 +10,7 @@ function loadArrow() {
     return require('apache-arrow')
   } catch (err) {
     throw new Error(
-      '@advcomm/mtdd: MTDD_GRPC_RESULT_FORMAT=arrow requires the apache-arrow package. ' +
+      '@advcomm/mtdd: apache-arrow is required for gRPC query results. ' +
         `Install it alongside @advcomm/mtdd. (${err.message})`,
     )
   }
@@ -58,25 +57,15 @@ function buildLibpqQueryParams(req) {
 }
 
 function buildQueryRequestPayload(hostIndex, req, sessionId) {
-  const payload = {
+  return {
     host_index: hostIndex,
     text: req.text ?? '',
     name: req.name ?? '',
     row_mode: req.row_mode ?? req.rowMode ?? '',
     session_id: sessionId ?? '',
-    response_format: protoResponseFormatEnum(),
+    params: buildLibpqQueryParams(req),
     result_format: 0,
   }
-
-  if (usesArrowResultFormat()) {
-    payload.params = buildLibpqQueryParams(req)
-    payload.values_json = ''
-  } else {
-    payload.values_json = JSON.stringify(req.values ?? [])
-    payload.params = []
-  }
-
-  return payload
 }
 
 function pgFieldsFromSchema(schema) {
@@ -212,13 +201,20 @@ function decodeArrowStreamToPgResult(chunks) {
 }
 
 function encodePgResultAsChunks(pgResult) {
-  const fields = (pgResult.fields ?? []).map((field) => ({
-    name: field.name,
-    table_oid: field.tableID ?? 0,
-    column_id: field.columnID ?? 0,
-    data_type_oid: field.dataTypeID ?? 0,
-    format: field.format ?? 0,
-  }))
+  const rowKeys = columnNamesForRows(pgResult.fields, pgResult.rows)
+  const fieldByName = new Map(
+    (pgResult.fields ?? []).map((field) => [field.name, field]),
+  )
+  const fields = rowKeys.map((name) => {
+    const field = fieldByName.get(name)
+    return {
+      name,
+      table_oid: field?.tableID ?? 0,
+      column_id: field?.columnID ?? 0,
+      data_type_oid: field?.dataTypeID ?? 0,
+      format: field?.format ?? 0,
+    }
+  })
 
   const schemaBuffer = resultMeta.encodeResultSchema({
     command: pgResult.command ?? 'SELECT',
@@ -248,10 +244,26 @@ function encodePgResultAsChunks(pgResult) {
   return chunks
 }
 
+function columnNamesForRows(fields, rows) {
+  const names = new Set()
+  for (const field of fields ?? []) {
+    if (field?.name) {
+      names.add(field.name)
+    }
+  }
+  for (const row of rows ?? []) {
+    if (row && typeof row === 'object') {
+      for (const key of Object.keys(row)) {
+        names.add(key)
+      }
+    }
+  }
+  return [...names]
+}
+
 function encodeRowsAsArrowIpc(fields, rows) {
   const arrow = loadArrow()
-  const fieldNames =
-    fields.length > 0 ? fields.map((f) => f.name) : Object.keys(rows[0] ?? {})
+  const fieldNames = columnNamesForRows(fields, rows)
 
   if (fieldNames.length === 0) {
     const table = arrow.tableFromArrays({})
@@ -275,6 +287,30 @@ async function collectStreamChunks(stream) {
   return chunks
 }
 
+/** Decode mock-recorded query params back to JS values (tests). */
+function decodeQueryParamsForTest(params) {
+  if (!Array.isArray(params)) {
+    return []
+  }
+  return params.map((param) => {
+    if (!param || param.format === 1) {
+      return Buffer.isBuffer(param?.value)
+        ? param.value
+        : Buffer.from(param?.value ?? [])
+    }
+    const raw = param.value ?? Buffer.alloc(0)
+    const text = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw)
+    if (text === '') {
+      return null
+    }
+    const asNumber = Number(text)
+    if (text !== '' && !Number.isNaN(asNumber) && String(asNumber) === text) {
+      return asNumber
+    }
+    return text
+  })
+}
+
 module.exports = {
   CHUNK_KIND_SCHEMA,
   CHUNK_KIND_BATCH,
@@ -287,5 +323,6 @@ module.exports = {
   encodePgResultAsChunks,
   encodeRowsAsArrowIpc,
   collectStreamChunks,
+  decodeQueryParamsForTest,
   loadArrow,
 }

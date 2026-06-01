@@ -8,6 +8,7 @@ const {
 } = require('./helpers')
 const { install } = require('../patch')
 const hooks = require('../hooks')
+const { decodeQueryParamsForTest } = require('../grpc-arrow-codec')
 
 describe('query passthrough', () => {
   let restoreEnv
@@ -47,7 +48,7 @@ describe('query passthrough', () => {
     await pool.query('SELECT $1', [42])
 
     assert.equal(grpcState.queries[0].text, 'SELECT $1')
-    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [42])
+    assert.deepEqual(decodeQueryParamsForTest(grpcState.queries[0].params), [42])
   })
 
   it('passes query config objects through without tid', async () => {
@@ -58,7 +59,7 @@ describe('query passthrough', () => {
     await pool.query({ text: 'SELECT $1', values: [1], name: 'q1' })
 
     assert.equal(grpcState.queries[0].text, 'SELECT $1')
-    assert.deepEqual(JSON.parse(grpcState.queries[0].values_json), [1])
+    assert.deepEqual(decodeQueryParamsForTest(grpcState.queries[0].params), [1])
     assert.equal(grpcState.queries[0].name, 'q1')
   })
 })
