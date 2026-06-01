@@ -28,7 +28,7 @@ describe('query classifier', () => {
 
     assert.deepEqual(
       classifyQuery(
-        'WITH inactive AS (SELECT id FROM users) DELETE FROM users u USING inactive i WHERE u.id = i.id RETURNING u.id',
+        'WITH inactive AS (SELECT id FROM users) DELETE FROM users u WHERE u.id IN (SELECT id FROM inactive) RETURNING u.id',
       ),
       {
         commandType: 'DELETE',

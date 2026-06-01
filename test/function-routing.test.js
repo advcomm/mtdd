@@ -31,7 +31,7 @@ describe('query classifier FUNCTION', () => {
 
     assert.deepEqual(
       classifyQuery(
-        'WITH params AS (SELECT $1::text AS code) SELECT * FROM lookup_rate($1) AS r(rate)',
+        'WITH params AS (SELECT 1 AS code) SELECT * FROM lookup_rate($1) AS r(rate)',
       ),
       {
         commandType: 'FUNCTION',

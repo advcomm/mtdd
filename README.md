@@ -109,6 +109,8 @@ const tid = queryConfigTid ?? asyncContext?.tid ?? undefined
 
 Missing `tid` is valid (e.g. global reference data). Override merge / coordinator logic in `onQuery` (see below).
 
+SQL routing uses **AST classification** ([`pgsql-ast-parser`](https://www.npmjs.com/package/pgsql-ast-parser)) in [`sql-parse.js`](sql-parse.js). There is no regex fallback. Unparseable SQL or multi-statement strings throw `MtddSqlParseError`. `CALL` is detected via a dedicated pre-parse check because that parser does not support the `CALL` statement type.
+
 ### Fan-out merge by SQL type
 
 When a query fans out (no `tid`), MTDD classifies `req.text` and merges shard results in core before returning to the app.
@@ -236,7 +238,8 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
 | `lookup-client.js` | HTTP lookup client |
 | `query-executor.js` | Per-query shard routing |
-| `query-classifier.js` | SQL command detection (DELETE, UPDATE, INSERT, CALL, FUNCTION, RETURNING, …) |
+| `sql-parse.js` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
+| `query-classifier.js` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |
 | `merge-results.js` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
 | `host-policy.js` | `DB_HOST` validation |
 | `grpc-hub.js` | gRPC connect-all + `Query` routing |

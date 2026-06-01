@@ -12,6 +12,7 @@ const {
   discardedCallResult,
 } = require('./merge-results')
 const { classifyQuery } = require('./query-classifier')
+const { MtddSqlParseError, parseQueryAst } = require('./sql-parse')
 const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
@@ -32,6 +33,8 @@ module.exports = {
   mergeFanOutResults,
   discardedCallResult,
   classifyQuery,
+  parseQueryAst,
+  MtddSqlParseError,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,
