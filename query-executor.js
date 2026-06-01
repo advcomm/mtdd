@@ -13,7 +13,7 @@ const { getWriteHost } = require('./host-config')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
-const { splitSelectForOrderedFanOut } = require('./select-order-fanout')
+const { splitSelectForLocalFanOut } = require('./select-local-fanout')
 const { mergeSelectResultsOnLocalPostgres } = require('./postgres-select-merge')
 const hooks = require('./hooks')
 const {
@@ -224,9 +224,9 @@ async function fanOutQuery(meta, req, target) {
   }
 
   if (req.commandType === 'SELECT') {
-    const split = splitSelectForOrderedFanOut(req.text)
-    if (split.needsLocalReorder) {
-      return fanOutSelectWithOrderBy(meta, req, split)
+    const split = splitSelectForLocalFanOut(req.text)
+    if (split.needsLocalMerge) {
+      return fanOutSelectWithLocalMerge(meta, req, split)
     }
   }
 
@@ -239,7 +239,7 @@ async function fanOutQuery(meta, req, target) {
   return mergeFanOutResults(req, results)
 }
 
-async function fanOutSelectWithOrderBy(meta, req, split) {
+async function fanOutSelectWithLocalMerge(meta, req, split) {
   const shardReq = {
     ...req,
     text: split.fanOutText,
@@ -252,6 +252,7 @@ async function fanOutSelectWithOrderBy(meta, req, split) {
   )
 
   req.shardResults = results
+  req.localMerge = true
   req.localReorder = true
   req.fanOutSql = split.fanOutText
 

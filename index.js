@@ -56,6 +56,8 @@ module.exports = {
   getCopyMergeThreshold: localMergePolicy.getCopyMergeThreshold,
   getIndexMergeThreshold: localMergePolicy.getIndexMergeThreshold,
   rewriteQueryTableNameAst: require('./select-order-rewrite').rewriteQueryTableNameAst,
+  splitSelectForLocalFanOut: require('./select-local-fanout').splitSelectForLocalFanOut,
+  splitSelectForOrderedFanOut: require('./select-local-fanout').splitSelectForOrderedFanOut,
   fanOutOnly,
   initGrpcHub: grpcHub.initGrpcHub,
   closeGrpcHub: grpcHub.closeGrpcHub,
