@@ -22,6 +22,8 @@ const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
 const preloadLogger = require('./preload-logger')
+const grpcResultPolicy = require('./grpc-result-policy')
+const grpcArrowCodec = require('./grpc-arrow-codec')
 
 module.exports = {
   install: patch.install,
@@ -67,4 +69,8 @@ module.exports = {
   resetGrpcHub: grpcHub.resetGrpcHub,
   getPreloadLogConfig: preloadLogger.getPreloadLogConfig,
   resolvePreloadEnv: preloadLogger.resolvePreloadEnv,
+  getGrpcResultFormat: grpcResultPolicy.getGrpcResultFormat,
+  usesArrowResultFormat: grpcResultPolicy.usesArrowResultFormat,
+  buildQueryRequestPayload: grpcArrowCodec.buildQueryRequestPayload,
+  decodeArrowStreamToPgResult: grpcArrowCodec.decodeArrowStreamToPgResult,
 }

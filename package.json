@@ -12,6 +12,7 @@
   "files": [
     "*.js",
     "proto/",
+    "flatbuffers/",
     "examples/",
     "README.md"
   ],
@@ -30,8 +31,8 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "pg": ">=8.0.0",
-    "@opentelemetry/api": ">=1 <2"
+    "@opentelemetry/api": ">=1 <2",
+    "pg": ">=8.0.0"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api": {
@@ -41,6 +42,8 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.12.6",
     "@grpc/proto-loader": "^0.7.13",
+    "apache-arrow": "^21.1.0",
+    "flatbuffers": "^25.9.23",
     "pg-copy-streams": "^6.0.6",
     "pgsql-ast-parser": "^12.0.2",
     "redis": "^6.0.0"

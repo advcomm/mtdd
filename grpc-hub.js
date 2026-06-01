@@ -3,6 +3,8 @@ const { getWriteHost, getReadHosts } = require('./host-config')
 const { pickReadEndpoint } = require('./shard-endpoints')
 const { getGrpcPort, getGrpcConnectTimeoutMs } = require('./grpc-policy')
 const preloadLog = require('./preload-logger')
+const { usesArrowResultFormat } = require('./grpc-result-policy')
+const grpcArrowCodec = require('./grpc-arrow-codec')
 
 let transport = null
 let shardState = null
@@ -55,11 +57,40 @@ function promisifyUnary(client, method, request, deadlineMs) {
   })
 }
 
+function promisifyQueryStream(client, request, deadlineMs) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + deadlineMs
+    const chunks = []
+    const call = client.QueryStream(request, { deadline })
+    call.on('data', (chunk) => chunks.push(chunk))
+    call.on('error', reject)
+    call.on('end', () => {
+      try {
+        resolve(grpcArrowCodec.decodeArrowStreamToPgResult(chunks))
+      } catch (err) {
+        reject(err)
+      }
+    })
+  })
+}
+
 function normalizeHostEntryForConnect(entry) {
   if (typeof entry === 'string') {
     return { write: entry, read: [] }
   }
   return entry
+}
+
+function buildConnectRequest(hostIndex, credentials, roleHost) {
+  return {
+    host_index: hostIndex,
+    dbname: credentials.database,
+    database: credentials.database,
+    user: credentials.user,
+    password: credentials.password,
+    port: credentials.port,
+    host: roleHost,
+  }
 }
 
 function createRealTransport() {
@@ -74,13 +105,7 @@ function createRealTransport() {
       grpc.credentials.createInsecure(),
     )
 
-    const request = {
-      host_index: hostIndex,
-      database: credentials.database,
-      user: credentials.user,
-      password: credentials.password,
-      port: credentials.port,
-    }
+    const request = buildConnectRequest(hostIndex, credentials, host)
 
     let response
     try {
@@ -98,6 +123,27 @@ function createRealTransport() {
     }
 
     return { host, hostIndex, role, client }
+  }
+
+  async function queryUnaryJson(endpoint, request, deadlineMs) {
+    const response = await promisifyUnary(
+      endpoint.client,
+      'Query',
+      request,
+      deadlineMs,
+    )
+
+    if (!response.ok) {
+      throw new Error(
+        `gRPC Query failed on host_index ${request.host_index} (${endpoint.role} ${endpoint.host}): ${response.error || 'unknown error'}`,
+      )
+    }
+
+    return JSON.parse(response.result_json)
+  }
+
+  async function queryStreamArrow(endpoint, request, deadlineMs) {
+    return promisifyQueryStream(endpoint.client, request, deadlineMs)
   }
 
   return {
@@ -142,20 +188,10 @@ function createRealTransport() {
     },
 
     async query(endpoint, request, deadlineMs) {
-      const response = await promisifyUnary(
-        endpoint.client,
-        'Query',
-        request,
-        deadlineMs,
-      )
-
-      if (!response.ok) {
-        throw new Error(
-          `gRPC Query failed on host_index ${request.host_index} (${endpoint.role} ${endpoint.host}): ${response.error || 'unknown error'}`,
-        )
+      if (usesArrowResultFormat()) {
+        return queryStreamArrow(endpoint, request, deadlineMs)
       }
-
-      return JSON.parse(response.result_json)
+      return queryUnaryJson(endpoint, request, deadlineMs)
     },
 
     async disconnectAll(shards) {
@@ -290,15 +326,7 @@ function requireShardState() {
 }
 
 function buildQueryRequest(hostIndex, req, sessionId) {
-  const query = {
-    host_index: hostIndex,
-    text: req.text ?? '',
-    values_json: JSON.stringify(req.values ?? []),
-    name: req.name ?? '',
-    row_mode: req.row_mode ?? '',
-    session_id: sessionId ?? '',
-  }
-  return query
+  return grpcArrowCodec.buildQueryRequestPayload(hostIndex, req, sessionId)
 }
 
 async function queryShard(hostIndex, req, sessionId, role = 'write') {
@@ -343,5 +371,6 @@ module.exports = {
   useMockTransport,
   resetGrpcHub,
   buildQueryRequest,
+  buildConnectRequest,
   warnReadConnectFailure,
 }

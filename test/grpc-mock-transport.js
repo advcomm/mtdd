@@ -1,5 +1,10 @@
 const { getWriteHost, getReadHosts } = require('../host-config')
 const { classifyQuery } = require('../query-classifier')
+const { usesArrowResultFormat } = require('../grpc-result-policy')
+const {
+  encodePgResultAsChunks,
+  decodeArrowStreamToPgResult,
+} = require('../grpc-arrow-codec')
 
 function normalizeHostEntryForConnect(entry) {
   if (typeof entry === 'string') {
@@ -59,6 +64,24 @@ function createRecordingMockTransport(state) {
         ...request,
       })
 
+      const pgResult = buildMockPgResult(endpoint, request, state)
+      if (usesArrowResultFormat()) {
+        return decodeArrowStreamToPgResult(encodePgResultAsChunks(pgResult))
+      }
+      return pgResult
+    },
+
+    async disconnectAll(shards) {
+      let count = 0
+      for (const shard of shards) {
+        count += 1 + shard.reads.length
+      }
+      state.disconnected = (state.disconnected ?? 0) + count
+    },
+  }
+}
+
+function buildMockPgResult(endpoint, request, state) {
       const classification = classifyQuery(request.text)
       if (classification.commandType === 'DELETE') {
         return buildDmlMockResult(endpoint, state, classification, 'DELETE')
@@ -95,16 +118,6 @@ function createRecordingMockTransport(state) {
         fields,
         rows,
       }
-    },
-
-    async disconnectAll(shards) {
-      let count = 0
-      for (const shard of shards) {
-        count += 1 + shard.reads.length
-      }
-      state.disconnected = (state.disconnected ?? 0) + count
-    },
-  }
 }
 
 function buildDmlMockResult(endpoint, state, classification, command) {

@@ -22,6 +22,9 @@ function pickPgConfigFields(config) {
       picked[key] = config[key]
     }
   }
+  if ('types' in config) {
+    picked.types = config.types
+  }
   return picked
 }
 
@@ -61,6 +64,9 @@ function normalizeQueryRequest(source, rawArgs, client, pool) {
 
   if (isQueryConfig(first)) {
     Object.assign(req, pickPgConfigFields(first))
+    if (first.rowMode !== undefined && req.row_mode === undefined) {
+      req.row_mode = first.rowMode
+    }
     if ('tid' in first) {
       req.tid = first.tid
     }
