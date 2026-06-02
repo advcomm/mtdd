@@ -23,6 +23,10 @@ const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
 const preloadLogger = require('./preload-logger')
 const grpcArrowCodec = require('./grpc-arrow-codec')
+const notifyTransport = require('./mtdd-notify-transport')
+const notificationRegistry = require('./notification-registry')
+const listenNotifyParse = require('./listen-notify-parse')
+const syntheticResults = require('./synthetic-results')
 
 module.exports = {
   install: patch.install,
@@ -71,4 +75,17 @@ module.exports = {
   buildQueryRequestPayload: grpcArrowCodec.buildQueryRequestPayload,
   decodeArrowStreamToPgResult: grpcArrowCodec.decodeArrowStreamToPgResult,
   decodeQueryParamsForTest: grpcArrowCodec.decodeQueryParamsForTest,
+  parseListenNotifyStatement: listenNotifyParse.parseListenNotifyStatement,
+  isListenNotifyCommandType: listenNotifyParse.isListenNotifyCommandType,
+  initNotifyTransport: notifyTransport.initNotifyTransport,
+  getNotifyTransport: notifyTransport.getNotifyTransport,
+  useNotifyTransport: notifyTransport.useNotifyTransport,
+  resetNotifyTransport: notifyTransport.resetNotifyTransport,
+  createMemoryNotifyTransport: notifyTransport.createMemoryNotifyTransport,
+  getLogicalClientId: notificationRegistry.getLogicalClientId,
+  clearNotificationRegistryForTests:
+    notificationRegistry.clearNotificationRegistryForTests,
+  syntheticListenResult: syntheticResults.syntheticListenResult,
+  syntheticUnlistenResult: syntheticResults.syntheticUnlistenResult,
+  syntheticNotifyResult: syntheticResults.syntheticNotifyResult,
 }

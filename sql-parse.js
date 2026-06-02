@@ -5,6 +5,7 @@ const {
   getCachedClassificationAsync,
   setCachedClassificationAsync,
 } = require('./ast-classify-cache')
+const { parseListenNotifyStatement } = require('./listen-notify-parse')
 
 /**
  * pgsql-ast-parser does not parse PostgreSQL CALL statements.
@@ -138,6 +139,14 @@ function classifyFromAst(statements, sql) {
 }
 
 function computeClassification(text) {
+  const listenNotify = parseListenNotifyStatement(text)
+  if (listenNotify) {
+    return {
+      commandType: listenNotify.commandType,
+      hasReturning: false,
+    }
+  }
+
   if (isCallStatementText(text)) {
     return {
       commandType: 'CALL',

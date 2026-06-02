@@ -1,5 +1,6 @@
 const { normalizeConfigHosts } = require('./host-config')
 const { resolveHostIp } = require('./shard-endpoints')
+const { getNotifyEmitter } = require('./notification-registry')
 
 const MTDD_META = Symbol.for('@advcomm/mtdd.meta')
 const PINNED_HOST_INDEX = Symbol.for('@advcomm/mtdd.pinnedHostIndex')
@@ -110,6 +111,7 @@ function createPoolFacade(config, OriginalPool, OriginalClient) {
   }
 
   facade[MTDD_META] = meta
+  getNotifyEmitter(facade)
   return facade
 }
 
@@ -138,6 +140,7 @@ function createStandaloneClientFacade(config, OriginalPool, OriginalClient) {
   }
 
   facade[MTDD_META] = meta
+  getNotifyEmitter(facade)
   return facade
 }
 
@@ -173,6 +176,7 @@ function createCheckedOutClientFacade(poolMeta, pinnedHostIndex) {
     )
   }
 
+  getNotifyEmitter(clientFacade)
   return clientFacade
 }
 

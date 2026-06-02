@@ -8,7 +8,9 @@ const {
   isFunctionQuery,
   isSelectQuery,
   hasTenantTid,
+  isListenNotifyCommand,
 } = require('./query-classifier')
+const { executeListenNotifyCommand } = require('./listen-notify-handler')
 const { getWriteHost } = require('./host-config')
 const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
@@ -313,6 +315,11 @@ async function executeRoutedQuery(target, req) {
 
   req.hosts = meta.hosts
   await attachQueryClassification(req)
+
+  if (isListenNotifyCommand(req)) {
+    return executeListenNotifyCommand(target, req)
+  }
+
   assertInsertRequiresTid(req)
   assertCallTid(req)
   assertFunctionRequiresTid(req)

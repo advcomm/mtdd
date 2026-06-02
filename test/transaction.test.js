@@ -62,6 +62,28 @@ describe('transactions', () => {
     )
   })
 
+  it('allows LISTEN on a pinned transaction client without tid', async () => {
+    const { pg } = createMockPg()
+    install(pg)
+
+    const pool = new pg.Pool({
+      host: ['10.0.1.10', '10.0.1.11'],
+    })
+    const client = await pool.connect()
+
+    try {
+      await client.query({ text: 'BEGIN', tid: 'tenant-1' })
+      const listenResult = await client.query('LISTEN txn_events')
+      assert.equal(listenResult.command, 'LISTEN')
+      assert.equal(
+        grpcState.queries.filter((q) => q.text === 'LISTEN txn_events').length,
+        0,
+      )
+    } finally {
+      client.release()
+    }
+  })
+
   it('preserves ROLLBACK on error on the same shard', async () => {
     const { pg } = createMockPg()
     install(pg)

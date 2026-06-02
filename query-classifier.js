@@ -2,6 +2,7 @@ const {
   classifyQuery,
   classifyQueryAsync,
 } = require('./sql-parse')
+const { isListenNotifyCommandType } = require('./listen-notify-parse')
 
 async function attachQueryClassification(req) {
   const classification = await classifyQueryAsync(req.text)
@@ -46,6 +47,34 @@ function hasTenantTid(req) {
   return req.tid !== undefined && req.tid !== null
 }
 
+function isListenQuery(req) {
+  if (req?.commandType === 'LISTEN') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'LISTEN'
+}
+
+function isUnlistenQuery(req) {
+  if (req?.commandType === 'UNLISTEN') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'UNLISTEN'
+}
+
+function isNotifyQuery(req) {
+  if (req?.commandType === 'NOTIFY') {
+    return true
+  }
+  return classifyQuery(req?.text).commandType === 'NOTIFY'
+}
+
+function isListenNotifyCommand(req) {
+  if (isListenNotifyCommandType(req?.commandType)) {
+    return true
+  }
+  return isListenNotifyCommandType(classifyQuery(req?.text).commandType)
+}
+
 /** @deprecated Use classifyQuery; true when commandType is FUNCTION */
 function isStoredFunctionSelect(text) {
   return classifyQuery(text).commandType === 'FUNCTION'
@@ -62,4 +91,8 @@ module.exports = {
   isFunctionQuery,
   isSelectQuery,
   hasTenantTid,
+  isListenQuery,
+  isUnlistenQuery,
+  isNotifyQuery,
+  isListenNotifyCommand,
 }

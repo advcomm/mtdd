@@ -215,6 +215,29 @@ Content-Type: application/json
 
 - With `tid`, `pool.connect()` clients are **pinned** to the shard from the first routed query (required for `BEGIN` / `COMMIT`).
 - **Fan-out is not supported** on checked-out clients or `BEGIN` without `tid` on multi-host pools.
+- `LISTEN` / `UNLISTEN` / `NOTIFY` are handled separately (see below) and do not require `tid` on a checked-out client.
+
+### LISTEN / NOTIFY
+
+`LISTEN`, `UNLISTEN`, `UNLISTEN *`, and `NOTIFY` are **not** sent as shard `QueryStream` SQL. They are handled client-side:
+
+- **Registry** — logical subscription per pool/client/checkout facade (`notification-registry.js`)
+- **Transport** — `subscribe` / `unsubscribe` / `publish` via `mtdd-notify-transport.js` (in-memory mock when `MTDD_GRPC_MOCK=1`; production needs a coordinator — set `MTDD_NOTIFY_URL` when implemented)
+- **Events** — checked-out clients expose `pg`-compatible `notification` events (`channel`, `payload`, `processId`)
+- **Results** — synthetic empty results with `command` set to `LISTEN`, `UNLISTEN`, or `NOTIFY`
+
+Optional `tid` on the query scopes the channel namespace (`tid:channel`). Without `tid`, channels use a global namespace.
+
+```js
+const client = await pool.connect()
+client.on('notification', (msg) => {
+  console.log(msg.channel, msg.payload)
+})
+await client.query('LISTEN orders')
+await pool.query("NOTIFY orders, 'ready'")
+```
+
+See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the implementation spec.
 
 ## Tenant context
 
@@ -295,6 +318,11 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
 | `lookup-client.js` | HTTP lookup client |
 | `query-executor.js` | Per-query shard routing |
+| `listen-notify-parse.js` | Pre-parse `LISTEN` / `UNLISTEN` / `NOTIFY` |
+| `listen-notify-handler.js` | Client-side LISTEN/NOTIFY execution |
+| `notification-registry.js` | Facade client ↔ subscription registry + `notification` events |
+| `mtdd-notify-transport.js` | Notify transport (mock / future coordinator) |
+| `synthetic-results.js` | Synthetic pg results for LISTEN/UNLISTEN/NOTIFY |
 | `sql-parse.js` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
 | `ast-classify-cache.js` | In-memory + optional Redis cache for classification (SHA-256 keys) |
 | `query-classifier.js` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |

@@ -3,6 +3,7 @@ const { validateLookupUrl } = require('./lookup-policy')
 const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
 const { verifyLocalPostgresAtStartup } = require('./postgres-local')
 const { initGrpcHub, isGrpcHubReady } = require('./grpc-hub')
+const { initNotifyTransport } = require('./mtdd-notify-transport')
 const { settlePromiseSync } = require('./install-sync')
 const { getMtddContext } = require('./context')
 const hooks = require('./hooks')
@@ -35,6 +36,8 @@ function runPreload() {
     const state = settlePromiseSync(initGrpcHub(hosts, grpcCredentials))
     preloadLog.logGrpcHubInitComplete(state?.shards, Math.round(performance.now() - hubStart))
   }
+
+  initNotifyTransport()
 
   return hosts
 }
