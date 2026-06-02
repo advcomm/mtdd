@@ -42,7 +42,7 @@ export function decodeQueryStreamToPgResult(
   chunks: Array<Record<string, unknown>>,
 ): QueryResult
 
-/** @deprecated Use decodeQueryStreamToPgResult */
+/** @deprecated Use decodeQueryStreamToPgResult. Removed in next major. */
 export function decodeArrowStreamToPgResult(
   chunks: Array<Record<string, unknown>>,
 ): QueryResult

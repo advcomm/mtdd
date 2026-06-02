@@ -4,8 +4,9 @@
 
 ### Changed
 
-- Rename `grpc-arrow-codec` → `grpc-query-codec` (deprecated shim re-exports); doc cross-refs for mtdd_server@765da45+ / @bced8d7 pairing.
-- **RPGB streaming (mtdd_server@765da45):** send `QueryRequest.result_format = 1`; decode `ResultChunk.payload` (RPGB v1) instead of Arrow IPC. Removed `apache-arrow` dependency. `decodeQueryStreamToPgResult` is the primary decoder; `decodeArrowStreamToPgResult` remains as alias.
+- Pairing docs: recommend @advcomm/mtdd@07c20bc+ with mtdd_server ≥ 765da45; proto/CI pin [mtdd_server@eac5748](https://github.com/advcomm/mtdd_server/commit/eac5748d024a65ce9bc5d26bf5df5e1c58636cb6) (server defaults proto check to client@07c20bc).
+- Rename `grpc-arrow-codec` → `grpc-query-codec` (deprecated shim re-exports; shim scheduled for removal in next major).
+- **RPGB streaming (mtdd_server@765da45):** send `QueryRequest.result_format = 1`; decode `ResultChunk.payload` (RPGB v1) instead of Arrow IPC. Removed `apache-arrow` dependency. `decodeQueryStreamToPgResult` is the primary decoder; `decodeArrowStreamToPgResult` remains as alias until next major.
 - **TypeScript:** library source lives under `src/`; `npm run build` emits `dist/`. Published entrypoints are `dist/src/index.js` with consumer types in `src/public-api.d.ts`. Run `npm test` (build + test) when developing.
 - Build/export safety tests: `build-artifacts`, `package-exports`, `proto-path-dist`, `typescript-consumer` fixture (`strict` tsc).
 

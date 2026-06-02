@@ -159,7 +159,7 @@ Shard agents must implement **`QueryStream` only**. The client requires [`flatbu
 
 Chunk sequence: `SCHEMA` (optional first batch in `payload`) → `BATCH`* → `TRAILER` (or `ERROR`). The Node client decodes RPGB batches into the same pg `Result` shape (`rows`, `fields`, `rowCount`) used by merge logic.
 
-**Breaking change:** pair this client with [mtdd_server@765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803) or newer (`QueryStream` RPGB in `ResultChunk.payload`; client always sends `result_format = 1`).
+**Breaking change:** pair **@advcomm/mtdd@07c20bc+** (minimum **@bced8d7+**) with [mtdd_server@765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803) or newer (`QueryStream` RPGB in `ResultChunk.payload`; client always sends `result_format = 1`). Server integration/proto sync docs: [mtdd_server@eac5748+](https://github.com/advcomm/mtdd_server/commit/eac5748d024a65ce9bc5d26bf5df5e1c58636cb6).
 
 **Plain SQL only:** Do not set `name` on query configs (`mtdd_server` rejects `QueryRequest.name`). ORMs are not supported.
 
@@ -267,7 +267,7 @@ See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the impl
 
 ### Shutdown and TLS
 
-Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For production TLS, terminate at nginx and set `MTDD_GRPC_TLS=1` + `MTDD_GRPC_TLS_CA_FILE` on the client (verifies nginx, not `mtdd_server`). Optional `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev without nginx — see [docs/OPERATIONS.md](docs/OPERATIONS.md). Unix/nginx layout: [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de). **QueryStream:** @advcomm/mtdd@bced8d7+ requires mtdd_server ≥ [765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803).
+Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For production TLS, terminate at nginx and set `MTDD_GRPC_TLS=1` + `MTDD_GRPC_TLS_CA_FILE` on the client (verifies nginx, not `mtdd_server`). Optional `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev without nginx — see [docs/OPERATIONS.md](docs/OPERATIONS.md). Unix/nginx layout: [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de). **QueryStream:** @advcomm/mtdd@07c20bc+ (minimum @bced8d7+) with mtdd_server ≥ [765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803); server sync docs at [eac5748+](https://github.com/advcomm/mtdd_server/commit/eac5748d024a65ce9bc5d26bf5df5e1c58636cb6).
 
 | Variable | Purpose |
 |----------|---------|
@@ -367,7 +367,10 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `query-classifier.ts` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |
 | `merge-results.ts` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
 | `host-policy.ts` | `DB_HOST` validation |
-| `grpc-hub.ts` | gRPC connect-all + `Query` routing |
+| `grpc-query-codec.ts` | QueryStream encode/decode (RPGB `payload`, `result_format = 1`) |
+| `grpc-arrow-codec.ts` | Deprecated shim → `grpc-query-codec` (remove next major) |
+| `pg-binary-decode.ts` / `pg-binary-encode.ts` | RPGB v1 batch codec |
+| `grpc-hub.ts` | gRPC connect-all + `QueryStream` routing |
 | `grpc-credentials.ts` | `DB_NAME` / `DB_USER` / `DB_PASSWORD` for `Connect` |
 | `lookup-policy.ts` | `MTDD_LOOKUP_URL` validation |
 | `postgres-local.ts` | Startup `localhost` PostgreSQL connectivity check |
