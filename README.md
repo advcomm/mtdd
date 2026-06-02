@@ -46,6 +46,20 @@ NODE_OPTIONS="--require @advcomm/mtdd/register" node app.js
 
 Application code stays the same; only the process preload, `DB_HOST` format, and lookup URL change.
 
+## Developing this package
+
+Source is **TypeScript** under [`src/`](src/). The npm package ships compiled JavaScript in `dist/`.
+
+```bash
+npm ci
+npm run build    # tsc → dist/
+npm test         # build + node --test on dist/test/
+```
+
+TypeScript migration checks (in `test/`): compiled `dist/` layout, `package.json` exports, proto path from `dist/src`, and a strict `tsc` consumer fixture under `test/fixtures/`.
+
+Preload and imports for apps are unchanged: `@advcomm/mtdd/register` resolves to the built `register.js`.
+
 ## Application code (unchanged)
 
 ```js
@@ -334,39 +348,39 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 
 ## Package layout
 
-| File | Role |
-|------|------|
-| `register.js` | Preload entry (`--require`) |
-| `patch.js` | `pg` monkey-patch |
-| `pool-facade.js` | Multi-host pool facade + lazy sub-pools |
-| `lookup-client.js` | HTTP lookup client |
-| `query-executor.js` | Per-query shard routing |
-| `listen-notify-parse.js` | Pre-parse `LISTEN` / `UNLISTEN` / `NOTIFY` |
-| `listen-notify-handler.js` | Client-side LISTEN/NOTIFY execution |
-| `notification-registry.js` | Facade client ↔ subscription registry + `notification` events |
-| `mtdd-notify-transport.js` | Notify transport (memory mock / `MtddNotify` gRPC) |
-| `grpc-notify-client.js` | gRPC client for `MtddNotify` |
-| `notify-policy.js` | `MTDD_NOTIFY_URL` resolution |
-| `synthetic-results.js` | Synthetic pg results for LISTEN/UNLISTEN/NOTIFY |
-| `sql-parse.js` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
-| `ast-classify-cache.js` | In-memory + optional Redis cache for classification (SHA-256 keys) |
-| `query-classifier.js` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |
-| `merge-results.js` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
-| `host-policy.js` | `DB_HOST` validation |
-| `grpc-hub.js` | gRPC connect-all + `Query` routing |
-| `grpc-credentials.js` | `DB_NAME` / `DB_USER` / `DB_PASSWORD` for `Connect` |
-| `lookup-policy.js` | `MTDD_LOOKUP_URL` validation |
-| `postgres-local.js` | Startup `localhost` PostgreSQL connectivity check |
-| `normalize.js` | Query argument normalization |
-| `context.js` | `AsyncLocalStorage` helpers |
-| `hooks.js` | Hook entry points |
+| Source (`src/`) | Role |
+|-----------------|------|
+| `register.ts` | Preload entry (`--require`) |
+| `patch.ts` | `pg` monkey-patch |
+| `pool-facade.ts` | Multi-host pool facade + lazy sub-pools |
+| `lookup-client.ts` | HTTP lookup client |
+| `query-executor.ts` | Per-query shard routing |
+| `listen-notify-parse.ts` | Pre-parse `LISTEN` / `UNLISTEN` / `NOTIFY` |
+| `listen-notify-handler.ts` | Client-side LISTEN/NOTIFY execution |
+| `notification-registry.ts` | Facade client ↔ subscription registry + `notification` events |
+| `mtdd-notify-transport.ts` | Notify transport (memory mock / `MtddNotify` gRPC) |
+| `grpc-notify-client.ts` | gRPC client for `MtddNotify` |
+| `notify-policy.ts` | `MTDD_NOTIFY_URL` resolution |
+| `synthetic-results.ts` | Synthetic pg results for LISTEN/UNLISTEN/NOTIFY |
+| `sql-parse.ts` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
+| `ast-classify-cache.ts` | In-memory + optional Redis cache for classification (SHA-256 keys) |
+| `query-classifier.ts` | Thin wrapper: `attachQueryClassification`, `isInsertQuery`, … |
+| `merge-results.ts` | Fan-out merge (`mergeFanOutResults`, `mergeDeleteResults`) |
+| `host-policy.ts` | `DB_HOST` validation |
+| `grpc-hub.ts` | gRPC connect-all + `Query` routing |
+| `grpc-credentials.ts` | `DB_NAME` / `DB_USER` / `DB_PASSWORD` for `Connect` |
+| `lookup-policy.ts` | `MTDD_LOOKUP_URL` validation |
+| `postgres-local.ts` | Startup `localhost` PostgreSQL connectivity check |
+| `normalize.ts` | Query argument normalization |
+| `context.ts` | `AsyncLocalStorage` helpers |
+| `hooks.ts` | Hook entry points |
 
 ## Examples
 
 See [`examples/`](examples/):
 
-- `app-dev.js` — development without preload
-- `app-prod.js` — production with host array
+- `app-dev.ts` — development without preload
+- `app-prod.ts` — production with host array
 - `express-context-example.js` — `runWithMtddContext`
 - `lookup-mock-server.js` — minimal lookup HTTP server
 - `custom-onquery-merge.js` — custom fan-out merge via `onQuery`

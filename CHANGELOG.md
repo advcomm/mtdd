@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- **TypeScript:** library source lives under `src/`; `npm run build` emits `dist/`. Published entrypoints are `dist/src/index.js` with consumer types in `src/public-api.d.ts`. Run `npm test` (build + test) when developing.
+- Build/export safety tests: `build-artifacts`, `package-exports`, `proto-path-dist`, `typescript-consumer` fixture (`strict` tsc).
+
 ### Added
 
 - `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev (plain gRPC to server unix socket; production still uses `DB_HOST` + nginx)

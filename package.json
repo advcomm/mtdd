@@ -2,31 +2,44 @@
   "name": "@advcomm/mtdd",
   "version": "1.0.0",
   "description": "Production PostgreSQL interception and routing layer for Node.js pg applications",
-  "main": "index.js",
+  "main": "dist/src/index.js",
+  "types": "src/public-api.d.ts",
   "exports": {
-    ".": "./index.js",
-    "./register": "./register.js",
-    "./context": "./context.js",
-    "./hooks": "./hooks.js"
+    ".": {
+      "types": "./src/public-api.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./register": {
+      "types": "./src/public-api.d.ts",
+      "default": "./dist/src/register.js"
+    },
+    "./context": {
+      "types": "./src/public-api.d.ts",
+      "default": "./dist/src/context.js"
+    },
+    "./hooks": {
+      "types": "./src/public-api.d.ts",
+      "default": "./dist/src/hooks.js"
+    }
   },
   "files": [
     ".npmrc",
-    "*.js",
+    "src/public-api.d.ts",
+    "dist/src/**/*.js",
+    "dist/src/**/*.d.ts",
     "proto/",
-    "flatbuffers/",
     "examples/",
     "docs/",
-    "scripts/",
     "README.md",
-    "CHANGELOG.md",
-    "index.d.ts"
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/*.test.js",
-    "test:integration": "node scripts/integration-smoke.js",
-    "test:integration:notify-reconnect": "node scripts/integration-notify-reconnect-smoke.js"
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "npm run build && node --test --test-concurrency=1 dist/test/*.test.js",
+    "test:integration": "npm run build && node dist/scripts/integration-smoke.js",
+    "test:integration:notify-reconnect": "npm run build && node dist/scripts/integration-notify-reconnect-smoke.js"
   },
-  "types": "index.d.ts",
   "engines": {
     "node": ">=18"
   },
@@ -57,6 +70,9 @@
     "redis": "^6.0.0"
   },
   "devDependencies": {
-    "pg": "^8.13.0"
+    "@types/node": "^22.15.29",
+    "@types/pg": "^8.11.14",
+    "pg": "^8.13.0",
+    "typescript": "^5.8.3"
   }
 }
