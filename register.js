@@ -4,4 +4,8 @@ preloadLog.logDebug('register module loading', {
   nodeEnv: process.env.NODE_ENV,
 })
 
-require('./patch').install()
+const { install } = require('./patch')
+const { registerAutoShutdown } = require('./shutdown')
+
+install()
+registerAutoShutdown()

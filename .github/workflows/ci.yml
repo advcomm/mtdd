@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  proto-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check proto matches mtdd_server
+        env:
+          MTDD_PROTO_REF: main
+        run: |
+          chmod +x scripts/sync-proto.sh
+          cp proto/mtdd.proto proto/mtdd.proto.bak
+          ./scripts/sync-proto.sh || true
+          if ! diff -q proto/mtdd.proto proto/mtdd.proto.bak; then
+            echo "::error::proto/mtdd.proto is out of sync with mtdd_server@main. Run scripts/sync-proto.sh"
+            exit 1
+          fi

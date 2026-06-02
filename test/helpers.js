@@ -2,6 +2,7 @@ const path = require('node:path')
 const http = require('node:http')
 const { spawnSync } = require('node:child_process')
 const { resetGrpcHub, useMockTransport, initGrpcHub } = require('../grpc-hub')
+const { clearLookupCache } = require('../lookup-cache')
 const { getGrpcCredentialsFromEnv } = require('../grpc-credentials')
 const { settlePromiseSync } = require('../install-sync')
 const { createRecordingMockTransport } = require('./grpc-mock-transport')
@@ -63,6 +64,7 @@ function withTestEnv(overrides = {}) {
     MTDD_LOOKUP_TIMEOUT_MS: process.env.MTDD_LOOKUP_TIMEOUT_MS,
     MTDD_GRPC_MOCK: process.env.MTDD_GRPC_MOCK,
     MTDD_GRPC_PORT: process.env.MTDD_GRPC_PORT,
+    MTDD_LOOKUP_CACHE_TTL_MS: process.env.MTDD_LOOKUP_CACHE_TTL_MS,
   }
 
   process.env.DB_HOST =
@@ -73,9 +75,13 @@ function withTestEnv(overrides = {}) {
   process.env.MTDD_LOOKUP_URL =
     overrides.MTDD_LOOKUP_URL ?? DEFAULT_LOOKUP_URL
   process.env.MTDD_GRPC_MOCK = overrides.MTDD_GRPC_MOCK ?? '1'
+  process.env.MTDD_LOOKUP_CACHE_TTL_MS =
+    overrides.MTDD_LOOKUP_CACHE_TTL_MS ?? '0'
   if (overrides.MTDD_LOOKUP_TIMEOUT_MS !== undefined) {
     process.env.MTDD_LOOKUP_TIMEOUT_MS = overrides.MTDD_LOOKUP_TIMEOUT_MS
   }
+
+  clearLookupCache()
 
   return () => {
     for (const [key, value] of Object.entries(previous)) {
@@ -89,6 +95,7 @@ function withTestEnv(overrides = {}) {
 }
 
 function setupGrpcMock() {
+  clearLookupCache()
   resetGrpcHub()
   const grpcState = {
     connections: [],

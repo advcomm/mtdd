@@ -145,8 +145,16 @@ function createStandaloneClientFacade(config, OriginalPool, OriginalClient) {
 }
 
 function createCheckedOutClientFacade(poolMeta, pinnedHostIndex) {
+  let released = false
   const clientFacade = {
-    release() {},
+    async release() {
+      if (released) {
+        return
+      }
+      released = true
+      const { teardownNotifySubscriptions } = require('./listen-notify-lifecycle')
+      await teardownNotifySubscriptions(clientFacade)
+    },
     query() {
       throw new Error(
         '@advcomm/mtdd: checked-out client query must be invoked via patched entry',

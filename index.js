@@ -29,9 +29,16 @@ const grpcNotifyClient = require('./grpc-notify-client')
 const notificationRegistry = require('./notification-registry')
 const listenNotifyParse = require('./listen-notify-parse')
 const syntheticResults = require('./synthetic-results')
+const shutdown = require('./shutdown')
+const fanOutPolicy = require('./fan-out-policy')
+const lookupCache = require('./lookup-cache')
+const grpcTls = require('./grpc-tls')
+const grpcPolicy = require('./grpc-policy')
 
 module.exports = {
   install: patch.install,
+  shutdownMtdd: shutdown.shutdownMtdd,
+  registerAutoShutdown: shutdown.registerAutoShutdown,
   ...context,
   ...hooks,
   validateEnvDbHost: hostPolicy.validateEnvDbHost,
@@ -41,7 +48,9 @@ module.exports = {
   getReadHosts: hostConfig.getReadHosts,
   validateLookupUrl: lookupPolicy.validateLookupUrl,
   getGrpcCredentialsFromEnv: require('./grpc-credentials').getGrpcCredentialsFromEnv,
+  /** @deprecated Use lookup routing; round-robin host selection is not used in production. */
   selectHost: hostSelector.selectHost,
+  /** @deprecated Use lookup routing; round-robin host selection is not used in production. */
   resetHostCounter: hostSelector.resetHostCounter,
   defaultMergeResults,
   mergeDmlResults,
@@ -99,4 +108,11 @@ module.exports = {
   syntheticListenResult: syntheticResults.syntheticListenResult,
   syntheticUnlistenResult: syntheticResults.syntheticUnlistenResult,
   syntheticNotifyResult: syntheticResults.syntheticNotifyResult,
+  getFanOutPolicy: fanOutPolicy.getFanOutPolicy,
+  clearLookupCache: lookupCache.clearLookupCache,
+  getLookupCacheTtlMs: lookupCache.getLookupCacheTtlMs,
+  getGrpcQueryTimeoutMs: grpcPolicy.getGrpcQueryTimeoutMs,
+  getGrpcMaxRetries: grpcPolicy.getGrpcMaxRetries,
+  createGrpcChannelCredentials: grpcTls.createGrpcChannelCredentials,
+  teardownNotifySubscriptions: require('./listen-notify-lifecycle').teardownNotifySubscriptions,
 }

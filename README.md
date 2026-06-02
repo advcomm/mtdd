@@ -147,7 +147,9 @@ Chunk sequence: `SCHEMA` → `BATCH`* → `TRAILER` (or `ERROR`). The Node clien
 
 **Breaking change:** upgrade shard servers before deploying a client build that uses this proto.
 
-**Not in v1:** Parse/Bind/Execute RPCs (prepared statements / portals).
+**Plain SQL only:** Extended query / prepared statements (`query` config `name`) are rejected. ORMs are not supported.
+
+**Not in v1:** Parse/Bind/Execute RPCs on the wire.
 
 `tid` resolution order:
 
@@ -248,6 +250,17 @@ MTDD_NOTIFY_URL=10.0.0.100:50051
 Run `MtddNotify` on that coordinator host (`MTDD_NOTIFY_ENABLED=1` on [mtdd_server](https://github.com/advcomm/mtdd_server)); set `MTDD_NOTIFY_ENABLED=0` on shard-only nodes.
 
 See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the implementation spec.
+
+### Shutdown and TLS
+
+Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. Enable gRPC TLS with `MTDD_GRPC_TLS_CA_FILE` (and optional client cert files). See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+| Variable | Purpose |
+|----------|---------|
+| `MTDD_FANOUT_POLICY` | `all` (default) or `best_effort` |
+| `MTDD_LOOKUP_CACHE_TTL_MS` | Cache `tid` → `hostIndex` (default `30000`, `0` disables) |
+| `MTDD_GRPC_MAX_RETRIES` / `MTDD_LOOKUP_RETRY_COUNT` | Transient retry attempts |
+| `MTDD_GRPC_QUERY_TIMEOUT_MS` | Per-query gRPC deadline |
 
 ## Tenant context
 

@@ -42,23 +42,27 @@ function getEntry(logicalClientId) {
   return logicalIdToEntry.get(logicalClientId) ?? null
 }
 
-function addChannelSubscription(target, channel) {
+function subscriptionKey(channel, tidScope) {
+  return `${tidScope}:${channel}`
+}
+
+function addChannelSubscription(target, channel, tidScope = '__global__') {
   const logicalClientId = getLogicalClientId(target)
   const entry = logicalIdToEntry.get(logicalClientId)
   if (entry) {
-    entry.channels.add(channel)
+    entry.channels.add(subscriptionKey(channel, tidScope))
   }
   return logicalClientId
 }
 
-function removeChannelSubscription(target, channel) {
+function removeChannelSubscription(target, channel, tidScope = '__global__') {
   const logicalClientId = clientToLogicalId.get(target)
   if (!logicalClientId) {
     return logicalClientId
   }
   const entry = logicalIdToEntry.get(logicalClientId)
   if (entry) {
-    entry.channels.delete(channel)
+    entry.channels.delete(subscriptionKey(channel, tidScope))
   }
   return logicalClientId
 }
@@ -73,6 +77,47 @@ function clearChannelSubscriptions(target) {
     entry.channels.clear()
   }
   return logicalClientId
+}
+
+function getChannelSubscriptions(target) {
+  const logicalClientId = clientToLogicalId.get(target)
+  if (!logicalClientId) {
+    return []
+  }
+  const entry = logicalIdToEntry.get(logicalClientId)
+  if (!entry) {
+    return []
+  }
+
+  const out = []
+  for (const key of entry.channels) {
+    const colon = key.indexOf(':')
+    if (colon <= 0) {
+      continue
+    }
+    out.push({
+      tidScope: key.slice(0, colon),
+      channel: key.slice(colon + 1),
+    })
+  }
+  return out
+}
+
+function getChannelSubscriptionsForClientId(logicalClientId) {
+  const entry = logicalIdToEntry.get(logicalClientId)
+  if (!entry) {
+    return []
+  }
+  const target = entry.target
+  return getChannelSubscriptions(target)
+}
+
+function removeClient(target) {
+  const logicalClientId = clientToLogicalId.get(target)
+  if (!logicalClientId) {
+    return
+  }
+  logicalIdToEntry.delete(logicalClientId)
 }
 
 function emitNotification(target, notification) {
@@ -103,6 +148,10 @@ module.exports = {
   addChannelSubscription,
   removeChannelSubscription,
   clearChannelSubscriptions,
+  getChannelSubscriptions,
+  getChannelSubscriptionsForClientId,
+  removeClient,
+  subscriptionKey,
   emitNotification,
   dispatchToLogicalClient,
   clearNotificationRegistryForTests,

@@ -28,6 +28,16 @@ function pickPgConfigFields(config) {
   return picked
 }
 
+function assertPlainSqlQuery(req) {
+  const hasName = req.name !== undefined && req.name !== ''
+  const hasText = typeof req.text === 'string' && req.text.trim() !== ''
+  if (hasName && !hasText) {
+    throw new Error(
+      '@advcomm/mtdd: prepared statements are not supported; send plain SQL text on every query (not name-only).',
+    )
+  }
+}
+
 function normalizeQueryRequest(source, rawArgs, client, pool) {
   const req = {
     source,
@@ -114,4 +124,5 @@ module.exports = {
   normalizeQueryRequest,
   buildPgQueryArgs,
   isQueryConfig,
+  assertPlainSqlQuery,
 }

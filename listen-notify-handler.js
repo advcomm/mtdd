@@ -34,7 +34,7 @@ async function executeListenNotifyCommand(target, req) {
     case 'LISTEN': {
       const channel = validateNotifyChannel(parsed.channel)
       await transport.subscribe(logicalClientId, channel, tidScope)
-      addChannelSubscription(target, channel)
+      addChannelSubscription(target, channel, tidScope)
       req.routing = 'notify'
       req.notifyChannel = channel
       return syntheticListenResult()
@@ -46,7 +46,7 @@ async function executeListenNotifyCommand(target, req) {
       } else {
         const channel = validateNotifyChannel(parsed.channel)
         await transport.unsubscribe(logicalClientId, channel, tidScope)
-        removeChannelSubscription(target, channel)
+        removeChannelSubscription(target, channel, tidScope)
       }
       req.routing = 'notify'
       return syntheticUnlistenResult()

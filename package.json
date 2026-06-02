@@ -14,11 +14,17 @@
     "proto/",
     "flatbuffers/",
     "examples/",
-    "README.md"
+    "docs/",
+    "scripts/",
+    "README.md",
+    "CHANGELOG.md",
+    "index.d.ts"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:integration": "node scripts/integration-smoke.js"
   },
+  "types": "index.d.ts",
   "engines": {
     "node": ">=18"
   },

@@ -16,6 +16,7 @@ const { buildPgQueryArgs } = require('./normalize')
 const { queryShard, isGrpcHubReady } = require('./grpc-hub')
 const { getGrpcCredentialsFromEnv } = require('./grpc-credentials')
 const { splitSelectForLocalFanOut } = require('./select-local-fanout')
+const { runFanOut } = require('./fan-out-policy')
 const { mergeSelectResultsOnLocalPostgres } = require('./postgres-select-merge')
 const hooks = require('./hooks')
 const {
@@ -232,10 +233,8 @@ async function fanOutQuery(meta, req, target) {
     }
   }
 
-  const results = await Promise.all(
-    meta.hosts.map((_, hostIndex) =>
-      queryOnHostIndex(meta, hostIndex, req, null),
-    ),
+  const results = await runFanOut(meta.hosts.length, (hostIndex) =>
+    queryOnHostIndex(meta, hostIndex, req, null),
   )
   req.shardResults = results
   return mergeFanOutResults(req, results)
@@ -247,10 +246,8 @@ async function fanOutSelectWithLocalMerge(meta, req, split) {
     text: split.fanOutText,
   }
 
-  const results = await Promise.all(
-    meta.hosts.map((_, hostIndex) =>
-      queryOnHostIndex(meta, hostIndex, shardReq, null),
-    ),
+  const results = await runFanOut(meta.hosts.length, (hostIndex) =>
+    queryOnHostIndex(meta, hostIndex, shardReq, null),
   )
 
   req.shardResults = results
@@ -401,10 +398,8 @@ async function fanOutOnly(target, req) {
   req.hosts = meta.hosts
   req.routing = 'fanout'
 
-  const results = await Promise.all(
-    meta.hosts.map((_, hostIndex) =>
-      queryOnHostIndex(meta, hostIndex, req, null),
-    ),
+  const results = await runFanOut(meta.hosts.length, (hostIndex) =>
+    queryOnHostIndex(meta, hostIndex, req, null),
   )
 
   req.shardResults = results

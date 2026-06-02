@@ -1,5 +1,10 @@
 const hooks = require('./hooks')
 const { getLookupTimeoutMs } = require('./lookup-policy')
+const { getLookupRetryCount } = require('./grpc-policy')
+const {
+  getCachedHostIndex,
+  setCachedHostIndex,
+} = require('./lookup-cache')
 
 async function httpLookup(tid) {
   const url = process.env.MTDD_LOOKUP_URL
@@ -69,14 +74,41 @@ function assertHostIndex(hostIndex, hostCount, tid) {
   }
 }
 
+async function lookupWithRetries(tid) {
+  const maxAttempts = getLookupRetryCount() + 1
+  let lastError
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await httpLookup(tid)
+    } catch (err) {
+      lastError = err
+      if (attempt >= maxAttempts - 1) {
+        break
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(100 * 2 ** attempt, 1000)),
+      )
+    }
+  }
+
+  throw lastError
+}
+
 async function lookupHostIndex(tid, hostCount) {
+  const cached = getCachedHostIndex(tid)
+  if (cached !== undefined) {
+    assertHostIndex(cached, hostCount, tid)
+    return cached
+  }
+
   const lookupRequest = {
     tid,
     hostCount,
   }
 
   const hookResult = await hooks.onLookup(lookupRequest, async () =>
-    httpLookup(tid),
+    lookupWithRetries(tid),
   )
 
   const hostIndex =
@@ -89,6 +121,7 @@ async function lookupHostIndex(tid, hostCount) {
   }
 
   assertHostIndex(hostIndex, hostCount, tid)
+  setCachedHostIndex(tid, hostIndex)
   return hostIndex
 }
 

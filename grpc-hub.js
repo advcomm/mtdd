@@ -1,7 +1,14 @@
 const path = require('node:path')
 const { getWriteHost, getReadHosts } = require('./host-config')
 const { pickReadEndpoint } = require('./shard-endpoints')
-const { getGrpcPort, getGrpcConnectTimeoutMs } = require('./grpc-policy')
+const {
+  getGrpcPort,
+  getGrpcConnectTimeoutMs,
+  getGrpcQueryTimeoutMs,
+  getGrpcMaxRetries,
+  isRetryableGrpcError,
+} = require('./grpc-policy')
+const { createGrpcChannelCredentials } = require('./grpc-tls')
 const preloadLog = require('./preload-logger')
 const grpcArrowCodec = require('./grpc-arrow-codec')
 
@@ -92,23 +99,41 @@ function buildConnectRequest(hostIndex, credentials, roleHost) {
   }
 }
 
+async function withGrpcRetries(fn, maxRetries) {
+  let lastError
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      if (attempt >= maxRetries || !isRetryableGrpcError(err)) {
+        throw err
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(100 * 2 ** attempt, 1000)),
+      )
+    }
+  }
+  throw lastError
+}
+
 function createRealTransport() {
   const { grpc, MtddShard } = loadGrpcClient()
   const grpcPort = getGrpcPort()
-  const deadlineMs = getGrpcConnectTimeoutMs()
+  const connectDeadlineMs = getGrpcConnectTimeoutMs()
+  const queryDeadlineMs = getGrpcQueryTimeoutMs()
+  const maxRetries = getGrpcMaxRetries()
+  const channelCredentials = createGrpcChannelCredentials(grpc)
 
   async function connectEndpoint(host, hostIndex, credentials, role) {
     const address = `${host}:${grpcPort}`
-    const client = new MtddShard(
-      address,
-      grpc.credentials.createInsecure(),
-    )
+    const client = new MtddShard(address, channelCredentials)
 
     const request = buildConnectRequest(hostIndex, credentials, host)
 
     let response
     try {
-      response = await promisifyUnary(client, 'Connect', request, deadlineMs)
+      response = await promisifyUnary(client, 'Connect', request, connectDeadlineMs)
     } catch (err) {
       throw new Error(
         `gRPC Connect failed for ${role} host ${host} (host_index ${hostIndex}): ${err.message}`,
@@ -165,8 +190,11 @@ function createRealTransport() {
       return shards
     },
 
-    async query(endpoint, request, deadlineMs) {
-      return promisifyQueryStream(endpoint.client, request, deadlineMs)
+    async query(endpoint, request) {
+      return withGrpcRetries(
+        () => promisifyQueryStream(endpoint.client, request, queryDeadlineMs),
+        maxRetries,
+      )
     },
 
     async disconnectAll(shards) {
@@ -181,7 +209,7 @@ function createRealTransport() {
             endpoint.client,
             'Disconnect',
             { host_index: endpoint.hostIndex },
-            deadlineMs,
+            connectDeadlineMs,
           )
         } catch {
           // ignore disconnect errors during shutdown
@@ -319,8 +347,7 @@ async function queryShard(hostIndex, req, sessionId, role = 'write') {
 
   const activeTransport = getTransport()
   const request = buildQueryRequest(hostIndex, req, sessionId)
-  const deadlineMs = getGrpcConnectTimeoutMs()
-  return activeTransport.query(endpoint, request, deadlineMs)
+  return activeTransport.query(endpoint, request)
 }
 
 async function closeGrpcHub() {

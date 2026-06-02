@@ -7,8 +7,10 @@ const { initNotifyTransport } = require('./mtdd-notify-transport')
 const { settlePromiseSync } = require('./install-sync')
 const { getMtddContext } = require('./context')
 const hooks = require('./hooks')
-const { normalizeQueryRequest } = require('./normalize')
+const { normalizeQueryRequest, assertPlainSqlQuery } = require('./normalize')
 const { executeRoutedQuery } = require('./query-executor')
+const { withQuerySpan, spanAttributesFromReq } = require('./query-telemetry')
+const { registerAutoShutdown } = require('./shutdown')
 const {
   createFacade,
   isMtddFacade,
@@ -62,6 +64,7 @@ function install(pgModule) {
     preloadLog.logPreloadComplete({
       durationMs: Math.round(performance.now() - preloadStarted),
     })
+    registerAutoShutdown()
   } catch (err) {
     preloadLog.logPreloadFailed(err, {
       durationMs: Math.round(performance.now() - preloadStarted),
@@ -96,7 +99,14 @@ function install(pgModule) {
       req.hosts = meta.hosts
     }
 
-    const next = () => executeRoutedQuery(target, req)
+    assertPlainSqlQuery(req)
+
+    const runRouted = () =>
+      withQuerySpan('mtdd.query', spanAttributesFromReq(req), () =>
+        executeRoutedQuery(target, req),
+      )
+
+    const next = () => runRouted()
 
     if (req.callback) {
       const callback = req.callback
