@@ -14,7 +14,7 @@ Extend **existing** `@advcomm/mtdd` (`--require @advcomm/mtdd/register`). Do **n
 2. **Route early** in `executeRoutedQuery` **before** `fanOutQuery`, `queryShard`, or `assertTransactionRouting` fan-out errors
 3. **Never** send LISTEN/UNLISTEN/NOTIFY as `QueryStream` shard SQL
 4. **`notification-registry.js`** — `WeakMap` facade client ↔ logical id; `EventEmitter` for `notification` events
-5. **`mtdd-notify-transport.js`** — `subscribe` / `unsubscribe` / `publish` / `onNotification`; in-memory mock when `MTDD_GRPC_MOCK=1` or tests inject transport
+5. **`mtdd-notify-transport.js`** + **`grpc-notify-client.js`** — `MtddNotify` gRPC (`Subscribe`, `Unsubscribe`, `UnsubscribeAll`, `Publish`, `Watch`); in-memory when `MTDD_GRPC_MOCK=1` / `MTDD_NOTIFY_MOCK=1`
 6. **`listen-notify-handler.js`** — registry + transport; return synthetic pg results
 7. **Tests** — detect, transport calls, registry, `client.emit('notification')`
 8. **README** — coordinator/transport requirements for production
@@ -25,7 +25,7 @@ Extend **existing** `@advcomm/mtdd` (`--require @advcomm/mtdd/register`). Do **n
 |-------|----------|
 | NOTIFY delivery | Single `publish` to notify transport (coordinator-style); not per-shard `QueryStream` |
 | `tid` | Optional; scopes channel key when set (`tid:channel`), else global namespace |
-| Production transport | Interface only; wire `MTDD_NOTIFY_URL` or future proto later |
+| Production transport | `MtddNotify` on `MTDD_NOTIFY_URL` or first `DB_HOST` + `MTDD_GRPC_PORT` (aligned with mtdd_server) |
 | `processId` in events | `0` (synthetic) until server provides real pid |
 | Transactions | `BEGIN`/`COMMIT`/`ROLLBACK` unchanged; LISTEN allowed on pinned checkout without `tid` |
 

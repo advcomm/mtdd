@@ -37,7 +37,7 @@ function runPreload() {
     preloadLog.logGrpcHubInitComplete(state?.shards, Math.round(performance.now() - hubStart))
   }
 
-  initNotifyTransport()
+  initNotifyTransport({ hosts })
 
   return hosts
 }

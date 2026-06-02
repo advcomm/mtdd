@@ -1,4 +1,6 @@
 const registry = require('./notification-registry')
+const { resolveNotifyGrpcAddress } = require('./notify-policy')
+const { createGrpcNotifyTransport } = require('./grpc-notify-client')
 
 const SYNTHETIC_PROCESS_ID = 0
 
@@ -40,11 +42,8 @@ function createMemoryNotifyTransport() {
     },
 
     async unsubscribeAll(logicalClientId) {
-      for (const [key, bucket] of subscriptions.entries()) {
+      for (const [, bucket] of subscriptions.entries()) {
         bucket.delete(logicalClientId)
-        if (bucket.size === 0) {
-          subscriptions.delete(key)
-        }
       }
     },
 
@@ -83,24 +82,28 @@ function setNotificationHandler(handler) {
   notificationHandler = handler
 }
 
+function shouldUseMemoryNotifyTransport(options) {
+  return (
+    options.forceMock === true ||
+    process.env.MTDD_NOTIFY_MOCK === '1' ||
+    process.env.MTDD_GRPC_MOCK === '1'
+  )
+}
+
 function initNotifyTransport(options = {}) {
   if (options.transport) {
     activeTransport = options.transport
     return activeTransport
   }
 
-  const useMock =
-    options.forceMock === true ||
-    process.env.MTDD_NOTIFY_MOCK === '1' ||
-    process.env.MTDD_GRPC_MOCK === '1'
-
-  if (useMock) {
+  if (shouldUseMemoryNotifyTransport(options)) {
     activeTransport = createMemoryNotifyTransport()
     return activeTransport
   }
 
-  if (process.env.MTDD_NOTIFY_URL) {
-    activeTransport = createMemoryNotifyTransport()
+  const address = resolveNotifyGrpcAddress(options.hosts)
+  if (address) {
+    activeTransport = createGrpcNotifyTransport(address, options.grpcOptions)
     return activeTransport
   }
 
@@ -116,10 +119,16 @@ function getNotifyTransport() {
 }
 
 function useNotifyTransport(transport) {
+  if (activeTransport?.close) {
+    activeTransport.close()
+  }
   activeTransport = transport
 }
 
 function resetNotifyTransport() {
+  if (activeTransport?.close) {
+    activeTransport.close()
+  }
   activeTransport = null
   notificationHandler = null
 }

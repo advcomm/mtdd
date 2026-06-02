@@ -222,7 +222,7 @@ Content-Type: application/json
 `LISTEN`, `UNLISTEN`, `UNLISTEN *`, and `NOTIFY` are **not** sent as shard `QueryStream` SQL. They are handled client-side:
 
 - **Registry** — logical subscription per pool/client/checkout facade (`notification-registry.js`)
-- **Transport** — `subscribe` / `unsubscribe` / `publish` via `mtdd-notify-transport.js` (in-memory mock when `MTDD_GRPC_MOCK=1`; production needs a coordinator — set `MTDD_NOTIFY_URL` when implemented)
+- **Transport** — `MtddNotify` gRPC on the coordinator (`Subscribe`, `Unsubscribe`, `UnsubscribeAll`, `Publish`, `Watch`). In-memory when `MTDD_GRPC_MOCK=1` or `MTDD_NOTIFY_MOCK=1`; otherwise `MTDD_NOTIFY_URL` or the first `DB_HOST` write IP + `MTDD_GRPC_PORT` (same port as `MtddShard` on [mtdd_server](https://github.com/advcomm/mtdd_server))
 - **Events** — checked-out clients expose `pg`-compatible `notification` events (`channel`, `payload`, `processId`)
 - **Results** — synthetic empty results with `command` set to `LISTEN`, `UNLISTEN`, or `NOTIFY`
 
@@ -321,7 +321,9 @@ When `@advcomm/mtdd/register` loads, `process.env.DB_HOST` is validated **before
 | `listen-notify-parse.js` | Pre-parse `LISTEN` / `UNLISTEN` / `NOTIFY` |
 | `listen-notify-handler.js` | Client-side LISTEN/NOTIFY execution |
 | `notification-registry.js` | Facade client ↔ subscription registry + `notification` events |
-| `mtdd-notify-transport.js` | Notify transport (mock / future coordinator) |
+| `mtdd-notify-transport.js` | Notify transport (memory mock / `MtddNotify` gRPC) |
+| `grpc-notify-client.js` | gRPC client for `MtddNotify` |
+| `notify-policy.js` | `MTDD_NOTIFY_URL` resolution |
 | `synthetic-results.js` | Synthetic pg results for LISTEN/UNLISTEN/NOTIFY |
 | `sql-parse.js` | AST parse + classify (`pgsql-ast-parser`); `MtddSqlParseError` on failure |
 | `ast-classify-cache.js` | In-memory + optional Redis cache for classification (SHA-256 keys) |

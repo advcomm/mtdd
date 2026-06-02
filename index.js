@@ -24,6 +24,8 @@ const grpcHub = require('./grpc-hub')
 const preloadLogger = require('./preload-logger')
 const grpcArrowCodec = require('./grpc-arrow-codec')
 const notifyTransport = require('./mtdd-notify-transport')
+const notifyPolicy = require('./notify-policy')
+const grpcNotifyClient = require('./grpc-notify-client')
 const notificationRegistry = require('./notification-registry')
 const listenNotifyParse = require('./listen-notify-parse')
 const syntheticResults = require('./synthetic-results')
@@ -82,6 +84,9 @@ module.exports = {
   useNotifyTransport: notifyTransport.useNotifyTransport,
   resetNotifyTransport: notifyTransport.resetNotifyTransport,
   createMemoryNotifyTransport: notifyTransport.createMemoryNotifyTransport,
+  createGrpcNotifyTransport: grpcNotifyClient.createGrpcNotifyTransport,
+  resolveNotifyGrpcAddress: notifyPolicy.resolveNotifyGrpcAddress,
+  parseNotifyGrpcAddress: notifyPolicy.parseNotifyGrpcAddress,
   getLogicalClientId: notificationRegistry.getLogicalClientId,
   clearNotificationRegistryForTests:
     notificationRegistry.clearNotificationRegistryForTests,

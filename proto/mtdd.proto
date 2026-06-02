@@ -11,6 +11,15 @@ service MtddShard {
   rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
 }
 
+// Coordinator-style LISTEN/NOTIFY transport (matches mtdd-notify-transport.js).
+service MtddNotify {
+  rpc Subscribe(NotifySubscribeRequest) returns (NotifyAck);
+  rpc Unsubscribe(NotifyUnsubscribeRequest) returns (NotifyAck);
+  rpc UnsubscribeAll(NotifyUnsubscribeAllRequest) returns (NotifyAck);
+  rpc Publish(NotifyPublishRequest) returns (NotifyAck);
+  rpc Watch(NotifyWatchRequest) returns (stream NotifyMessage);
+}
+
 enum ChunkKind {
   CHUNK_KIND_UNSPECIFIED = 0;
   CHUNK_KIND_SCHEMA = 1;
@@ -74,4 +83,42 @@ message DisconnectRequest {
 
 message DisconnectResponse {
   bool ok = 1;
+}
+
+message NotifySubscribeRequest {
+  string client_id = 1;
+  string channel = 2;
+  string tid_scope = 3;
+}
+
+message NotifyUnsubscribeRequest {
+  string client_id = 1;
+  string channel = 2;
+  string tid_scope = 3;
+}
+
+message NotifyUnsubscribeAllRequest {
+  string client_id = 1;
+}
+
+message NotifyPublishRequest {
+  string channel = 1;
+  string payload = 2;
+  string tid_scope = 3;
+}
+
+message NotifyWatchRequest {
+  string client_id = 1;
+}
+
+message NotifyMessage {
+  string channel = 1;
+  string payload = 2;
+  int32 process_id = 3;
+}
+
+message NotifyAck {
+  bool ok = 1;
+  string message = 2;
+  int32 delivered_count = 3;
 }
