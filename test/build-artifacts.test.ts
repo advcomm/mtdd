@@ -16,7 +16,7 @@ const REQUIRED_DIST_MODULES = [
   'proto-path.js',
   'pool-facade.js',
   'listen-notify-handler.js',
-  'grpc-arrow-codec.js',
+  'grpc-query-codec.js',
 ]
 
 const REQUIRED_RUNTIME_EXPORTS = [

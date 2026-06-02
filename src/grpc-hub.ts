@@ -13,7 +13,7 @@ const {
   isUnixGrpcTarget,
 } = require('./grpc-target')
 const preloadLog = require('./preload-logger')
-const grpcArrowCodec = require('./grpc-arrow-codec')
+const grpcQueryCodec = require('./grpc-query-codec')
 
 let transport = null
 let shardState = null
@@ -75,7 +75,7 @@ function promisifyQueryStream(client, request, deadlineMs) {
     call.on('error', reject)
     call.on('end', () => {
       try {
-        resolve(grpcArrowCodec.decodeQueryStreamToPgResult(chunks))
+        resolve(grpcQueryCodec.decodeQueryStreamToPgResult(chunks))
       } catch (err) {
         reject(err)
       }
@@ -334,7 +334,7 @@ function requireShardState() {
 }
 
 function buildQueryRequest(hostIndex, req, sessionId) {
-  return grpcArrowCodec.buildQueryRequestPayload(hostIndex, req, sessionId)
+  return grpcQueryCodec.buildQueryRequestPayload(hostIndex, req, sessionId)
 }
 
 async function queryShard(hostIndex, req, sessionId, role = 'write') {

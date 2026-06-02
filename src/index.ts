@@ -22,7 +22,7 @@ const { fanOutOnly } = require('./query-executor')
 const lookupPolicy = require('./lookup-policy')
 const grpcHub = require('./grpc-hub')
 const preloadLogger = require('./preload-logger')
-const grpcArrowCodec = require('./grpc-arrow-codec')
+const grpcQueryCodec = require('./grpc-query-codec')
 const notifyTransport = require('./mtdd-notify-transport')
 const notifyPolicy = require('./notify-policy')
 const grpcNotifyClient = require('./grpc-notify-client')
@@ -84,10 +84,10 @@ module.exports = {
   resetGrpcHub: grpcHub.resetGrpcHub,
   getPreloadLogConfig: preloadLogger.getPreloadLogConfig,
   resolvePreloadEnv: preloadLogger.resolvePreloadEnv,
-  buildQueryRequestPayload: grpcArrowCodec.buildQueryRequestPayload,
-  decodeQueryStreamToPgResult: grpcArrowCodec.decodeQueryStreamToPgResult,
-  decodeArrowStreamToPgResult: grpcArrowCodec.decodeArrowStreamToPgResult,
-  decodeQueryParamsForTest: grpcArrowCodec.decodeQueryParamsForTest,
+  buildQueryRequestPayload: grpcQueryCodec.buildQueryRequestPayload,
+  decodeQueryStreamToPgResult: grpcQueryCodec.decodeQueryStreamToPgResult,
+  decodeArrowStreamToPgResult: grpcQueryCodec.decodeArrowStreamToPgResult,
+  decodeQueryParamsForTest: grpcQueryCodec.decodeQueryParamsForTest,
   parseListenNotifyStatement: listenNotifyParse.parseListenNotifyStatement,
   isListenNotifyCommandType: listenNotifyParse.isListenNotifyCommandType,
   initNotifyTransport: notifyTransport.initNotifyTransport,

@@ -3,7 +3,7 @@ const { classifyQuery } = require('../src/query-classifier')
 const {
   encodePgResultAsChunks,
   decodeQueryStreamToPgResult,
-} = require('../src/grpc-arrow-codec')
+} = require('../src/grpc-query-codec')
 
 function normalizeHostEntryForConnect(entry) {
   if (typeof entry === 'string') {

@@ -153,13 +153,13 @@ Proto definition: [`proto/mtdd.proto`](proto/mtdd.proto).
 | **Connect** | libpq keywords in `ConnectRequest` (`dbname`, `user`, `password`, `port`, `host`, …) |
 | **Query** | `QueryStream` with `PQexecParams`-style `params[]`; **`result_format` must be `1`** (libpq binary) |
 | **Result metadata** | FlexBuffers in `ResultChunk.flatbuffer_meta` ([`src/flatbuffers/result-meta-codec.ts`](src/flatbuffers/result-meta-codec.ts)) |
-| **Result rows** | RPGB v1 raw libpq cells in `ResultChunk.payload` ([`src/pg-binary-decode.ts`](src/pg-binary-decode.ts)) |
+| **Result rows** | RPGB v1 raw libpq cells in `ResultChunk.payload` ([`src/pg-binary-decode.ts`](src/pg-binary-decode.ts), [`src/grpc-query-codec.ts`](src/grpc-query-codec.ts)) |
 
 Shard agents must implement **`QueryStream` only**. The client requires [`flatbuffers`](https://www.npmjs.com/package/flatbuffers) for control metadata; row data is decoded locally from PostgreSQL OIDs.
 
 Chunk sequence: `SCHEMA` (optional first batch in `payload`) → `BATCH`* → `TRAILER` (or `ERROR`). The Node client decodes RPGB batches into the same pg `Result` shape (`rows`, `fields`, `rowCount`) used by merge logic.
 
-**Breaking change:** upgrade shard servers to [mtdd_server@765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803) or newer before deploying this client (Arrow IPC removed; `ResultChunk.payload` replaces `arrow_ipc`).
+**Breaking change:** pair this client with [mtdd_server@765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803) or newer (`QueryStream` RPGB in `ResultChunk.payload`; client always sends `result_format = 1`).
 
 **Plain SQL only:** Do not set `name` on query configs (`mtdd_server` rejects `QueryRequest.name`). ORMs are not supported.
 
@@ -267,7 +267,7 @@ See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the impl
 
 ### Shutdown and TLS
 
-Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For production TLS, terminate at nginx and set `MTDD_GRPC_TLS=1` + `MTDD_GRPC_TLS_CA_FILE` on the client (verifies nginx, not `mtdd_server`). Optional `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev without nginx — see [docs/OPERATIONS.md](docs/OPERATIONS.md) and [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de).
+Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For production TLS, terminate at nginx and set `MTDD_GRPC_TLS=1` + `MTDD_GRPC_TLS_CA_FILE` on the client (verifies nginx, not `mtdd_server`). Optional `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev without nginx — see [docs/OPERATIONS.md](docs/OPERATIONS.md). Unix/nginx layout: [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de). **QueryStream:** @advcomm/mtdd@bced8d7+ requires mtdd_server ≥ [765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803).
 
 | Variable | Purpose |
 |----------|---------|

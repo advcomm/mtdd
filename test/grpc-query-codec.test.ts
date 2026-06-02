@@ -11,7 +11,7 @@ const {
   CHUNK_KIND_TRAILER,
   CHUNK_KIND_BATCH,
   decodeQueryParamsForTest,
-} = require('../src/grpc-arrow-codec')
+} = require('../src/grpc-query-codec')
 const { encodeRawPgBatch } = require('../src/pg-binary-encode')
 const {
   decodeRawPgBatch,
@@ -126,6 +126,11 @@ describe('grpc-query-codec (RPGB)', () => {
 
   it('decodeArrowStreamToPgResult is an alias for decodeQueryStreamToPgResult', () => {
     assert.equal(decodeArrowStreamToPgResult, decodeQueryStreamToPgResult)
+  })
+
+  it('deprecated grpc-arrow-codec shim re-exports grpc-query-codec', () => {
+    const shim = require('../src/grpc-arrow-codec')
+    assert.equal(shim.decodeQueryStreamToPgResult, decodeQueryStreamToPgResult)
   })
 
   it('decodes pg errors from ERROR chunks', () => {

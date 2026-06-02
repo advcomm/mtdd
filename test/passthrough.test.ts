@@ -8,7 +8,7 @@ const {
 } = require('./helpers')
 const { install } = require('../src/patch')
 const hooks = require('../src/hooks')
-const { decodeQueryParamsForTest } = require('../src/grpc-arrow-codec')
+const { decodeQueryParamsForTest } = require('../src/grpc-query-codec')
 
 describe('query passthrough', () => {
   let restoreEnv
