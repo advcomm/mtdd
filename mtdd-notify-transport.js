@@ -1,5 +1,9 @@
 const registry = require('./notification-registry')
-const { resolveNotifyGrpcAddress } = require('./notify-policy')
+const {
+  validateNotifyCoordinatorConfig,
+  describeNotifyTransport,
+  isNotifyMockMode,
+} = require('./notify-policy')
 const { createGrpcNotifyTransport } = require('./grpc-notify-client')
 
 const SYNTHETIC_PROCESS_ID = 0
@@ -83,32 +87,52 @@ function setNotificationHandler(handler) {
 }
 
 function shouldUseMemoryNotifyTransport(options) {
-  return (
-    options.forceMock === true ||
-    process.env.MTDD_NOTIFY_MOCK === '1' ||
-    process.env.MTDD_GRPC_MOCK === '1'
-  )
+  return options.forceMock === true || isNotifyMockMode()
 }
 
 function initNotifyTransport(options = {}) {
   if (options.transport) {
     activeTransport = options.transport
+    activeTransport._mtddNotifyMeta = describeNotifyTransport(
+      options.hosts,
+      null,
+      options.transport.kind ?? 'custom',
+    )
     return activeTransport
   }
 
   if (shouldUseMemoryNotifyTransport(options)) {
     activeTransport = createMemoryNotifyTransport()
+    activeTransport._mtddNotifyMeta = describeNotifyTransport(
+      options.hosts,
+      null,
+      'memory',
+    )
     return activeTransport
   }
 
-  const address = resolveNotifyGrpcAddress(options.hosts)
+  const address = validateNotifyCoordinatorConfig(options.hosts)
   if (address) {
     activeTransport = createGrpcNotifyTransport(address, options.grpcOptions)
+    activeTransport._mtddNotifyMeta = describeNotifyTransport(
+      options.hosts,
+      address,
+      'grpc',
+    )
     return activeTransport
   }
 
   activeTransport = createMemoryNotifyTransport()
+  activeTransport._mtddNotifyMeta = describeNotifyTransport(
+    options.hosts,
+    null,
+    'memory',
+  )
   return activeTransport
+}
+
+function getNotifyTransportMeta() {
+  return activeTransport?._mtddNotifyMeta ?? null
 }
 
 function getNotifyTransport() {
@@ -143,4 +167,5 @@ module.exports = {
   useNotifyTransport,
   resetNotifyTransport,
   setNotificationHandler,
+  getNotifyTransportMeta,
 }

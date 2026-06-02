@@ -4,6 +4,10 @@ const {
   resolveTidScope,
 } = require('./mtdd-notify-transport')
 const {
+  validateNotifyChannel,
+  validateNotifyPayload,
+} = require('./notify-policy')
+const {
   addChannelSubscription,
   removeChannelSubscription,
   clearChannelSubscriptions,
@@ -28,10 +32,11 @@ async function executeListenNotifyCommand(target, req) {
 
   switch (parsed.commandType) {
     case 'LISTEN': {
-      await transport.subscribe(logicalClientId, parsed.channel, tidScope)
-      addChannelSubscription(target, parsed.channel)
+      const channel = validateNotifyChannel(parsed.channel)
+      await transport.subscribe(logicalClientId, channel, tidScope)
+      addChannelSubscription(target, channel)
       req.routing = 'notify'
-      req.notifyChannel = parsed.channel
+      req.notifyChannel = channel
       return syntheticListenResult()
     }
     case 'UNLISTEN': {
@@ -39,16 +44,19 @@ async function executeListenNotifyCommand(target, req) {
         await transport.unsubscribeAll(logicalClientId)
         clearChannelSubscriptions(target)
       } else {
-        await transport.unsubscribe(logicalClientId, parsed.channel, tidScope)
-        removeChannelSubscription(target, parsed.channel)
+        const channel = validateNotifyChannel(parsed.channel)
+        await transport.unsubscribe(logicalClientId, channel, tidScope)
+        removeChannelSubscription(target, channel)
       }
       req.routing = 'notify'
       return syntheticUnlistenResult()
     }
     case 'NOTIFY': {
-      await transport.publish(parsed.channel, parsed.payload, tidScope)
+      const channel = validateNotifyChannel(parsed.channel)
+      const payload = validateNotifyPayload(parsed.payload)
+      await transport.publish(channel, payload, tidScope)
       req.routing = 'notify'
-      req.notifyChannel = parsed.channel
+      req.notifyChannel = channel
       return syntheticNotifyResult()
     }
     default:

@@ -87,6 +87,12 @@ module.exports = {
   createGrpcNotifyTransport: grpcNotifyClient.createGrpcNotifyTransport,
   resolveNotifyGrpcAddress: notifyPolicy.resolveNotifyGrpcAddress,
   parseNotifyGrpcAddress: notifyPolicy.parseNotifyGrpcAddress,
+  validateNotifyCoordinatorConfig: notifyPolicy.validateNotifyCoordinatorConfig,
+  validateNotifyChannel: notifyPolicy.validateNotifyChannel,
+  validateNotifyPayload: notifyPolicy.validateNotifyPayload,
+  getMaxNotifyPayloadBytes: notifyPolicy.getMaxNotifyPayloadBytes,
+  getMaxNotifyChannelBytes: notifyPolicy.getMaxNotifyChannelBytes,
+  isNotifyMockMode: notifyPolicy.isNotifyMockMode,
   getLogicalClientId: notificationRegistry.getLogicalClientId,
   clearNotificationRegistryForTests:
     notificationRegistry.clearNotificationRegistryForTests,

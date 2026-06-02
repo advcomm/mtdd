@@ -25,7 +25,9 @@ Extend **existing** `@advcomm/mtdd` (`--require @advcomm/mtdd/register`). Do **n
 |-------|----------|
 | NOTIFY delivery | Single `publish` to notify transport (coordinator-style); not per-shard `QueryStream` |
 | `tid` | Optional; scopes channel key when set (`tid:channel`), else global namespace |
-| Production transport | `MtddNotify` on `MTDD_NOTIFY_URL` or first `DB_HOST` + `MTDD_GRPC_PORT` (aligned with mtdd_server) |
+| Production transport | `MtddNotify` gRPC; **multi-shard requires `MTDD_NOTIFY_URL`**; single-shard defaults to first `DB_HOST` + `MTDD_GRPC_PORT` |
+| Coordinator | One in-memory registry per mtdd_server process ([d175c15](https://github.com/advcomm/mtdd_server/commit/d175c1546d67d3113a521e9cd8dc3db870241a86)); shard-only nodes use `MTDD_NOTIFY_ENABLED=0` |
+| Channel / payload limits | Client validates `MTDD_MAX_NOTIFY_CHANNEL_BYTES` (63) and `MTDD_MAX_NOTIFY_PAYLOAD_BYTES` (65535) before RPC |
 | `processId` in events | `0` (synthetic) until server provides real pid |
 | Transactions | `BEGIN`/`COMMIT`/`ROLLBACK` unchanged; LISTEN allowed on pinned checkout without `tid` |
 

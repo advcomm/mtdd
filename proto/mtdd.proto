@@ -88,6 +88,7 @@ message DisconnectResponse {
 message NotifySubscribeRequest {
   string client_id = 1;
   string channel = 2;
+  // "__global__" or tenant id string (matches resolveTidScope on the client).
   string tid_scope = 3;
 }
 

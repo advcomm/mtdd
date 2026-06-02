@@ -29,11 +29,18 @@ describe('notify transport init', () => {
     getNotifyTransport().close()
   })
 
-  it('defaults grpc address to first host and MTDD_GRPC_PORT', () => {
+  it('defaults grpc address to first host for single-shard', () => {
     process.env.MTDD_GRPC_PORT = '50077'
-    initNotifyTransport({ hosts: ['10.0.1.20', '10.0.1.21'] })
+    initNotifyTransport({ hosts: ['10.0.1.20'] })
     assert.equal(getNotifyTransport().kind, 'grpc')
     assert.equal(getNotifyTransport().serverAddress, '10.0.1.20:50077')
     getNotifyTransport().close()
+  })
+
+  it('throws for multi-shard without MTDD_NOTIFY_URL when not mocking', () => {
+    assert.throws(
+      () => initNotifyTransport({ hosts: ['10.0.1.20', '10.0.1.21'] }),
+      /multi-shard DB_HOST requires MTDD_NOTIFY_URL/,
+    )
   })
 })

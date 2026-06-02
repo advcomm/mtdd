@@ -19,12 +19,17 @@ function loadGrpcNotifyClient() {
   return { grpc, MtddNotify: proto.MtddNotify }
 }
 
+function formatNotifyGrpcError(method, err) {
+  const detail = err?.details || err?.message || String(err)
+  return new Error(`MtddNotify.${method} failed: ${detail}`)
+}
+
 function promisifyUnary(client, method, request, deadlineMs) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + deadlineMs
     client[method](request, { deadline }, (err, response) => {
       if (err) {
-        reject(err)
+        reject(formatNotifyGrpcError(method, err))
         return
       }
       resolve(response)
@@ -66,8 +71,11 @@ function createGrpcNotifyTransport(serverAddress, options = {}) {
       })
     })
 
-    call.on('error', () => {
+    call.on('error', (err) => {
       watchCalls.delete(clientId)
+      if (options.onWatchError) {
+        options.onWatchError(clientId, err)
+      }
     })
 
     call.on('end', () => {

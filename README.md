@@ -222,7 +222,8 @@ Content-Type: application/json
 `LISTEN`, `UNLISTEN`, `UNLISTEN *`, and `NOTIFY` are **not** sent as shard `QueryStream` SQL. They are handled client-side:
 
 - **Registry** — logical subscription per pool/client/checkout facade (`notification-registry.js`)
-- **Transport** — `MtddNotify` gRPC on the coordinator (`Subscribe`, `Unsubscribe`, `UnsubscribeAll`, `Publish`, `Watch`). In-memory when `MTDD_GRPC_MOCK=1` or `MTDD_NOTIFY_MOCK=1`; otherwise `MTDD_NOTIFY_URL` or the first `DB_HOST` write IP + `MTDD_GRPC_PORT` (same port as `MtddShard` on [mtdd_server](https://github.com/advcomm/mtdd_server))
+- **Transport** — `MtddNotify` gRPC on a coordinator (`Subscribe`, `Unsubscribe`, `UnsubscribeAll`, `Publish`, `Watch`). In-memory when `MTDD_GRPC_MOCK=1` or `MTDD_NOTIFY_MOCK=1`. Production: **`MTDD_NOTIFY_URL`** for multi-shard (required); single-shard may omit it (defaults to first `DB_HOST` write IP + `MTDD_GRPC_PORT`). Align [proto/mtdd.proto](proto/mtdd.proto) with [mtdd_server](https://github.com/advcomm/mtdd_server) — notify subscriptions are in-memory per server process.
+- **Limits** — `MTDD_MAX_NOTIFY_CHANNEL_BYTES` (default `63`) and `MTDD_MAX_NOTIFY_PAYLOAD_BYTES` (default `65535`), matching server validation.
 - **Events** — checked-out clients expose `pg`-compatible `notification` events (`channel`, `payload`, `processId`)
 - **Results** — synthetic empty results with `command` set to `LISTEN`, `UNLISTEN`, or `NOTIFY`
 
@@ -236,6 +237,15 @@ client.on('notification', (msg) => {
 await client.query('LISTEN orders')
 await pool.query("NOTIFY orders, 'ready'")
 ```
+
+Multi-shard production example:
+
+```env
+DB_HOST=["10.0.1.10","10.0.1.11"]
+MTDD_NOTIFY_URL=10.0.0.100:50051
+```
+
+Run `MtddNotify` on that coordinator host (`MTDD_NOTIFY_ENABLED=1` on [mtdd_server](https://github.com/advcomm/mtdd_server)); set `MTDD_NOTIFY_ENABLED=0` on shard-only nodes.
 
 See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the implementation spec.
 

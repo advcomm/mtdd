@@ -432,6 +432,20 @@ function logGrpcReadConnectWarning(writeHost, hostIndex, readHost, err) {
   })
 }
 
+function logNotifyTransportInit(meta) {
+  if (!meta) {
+    return
+  }
+  logInfo('notify transport init', {
+    transportKind: meta.transportKind,
+    address: meta.address,
+    shardCount: meta.shardCount,
+    explicitCoordinator: meta.explicitCoordinator,
+    singleShardDefault: meta.singleShardDefault,
+    mock: process.env.MTDD_GRPC_MOCK === '1' || process.env.MTDD_NOTIFY_MOCK === '1',
+  })
+}
+
 function logPatchApplied() {
   logInfo('pg patch applied', { patched: true })
 }
@@ -464,6 +478,7 @@ module.exports = {
   logGrpcHubInitStarting,
   logGrpcHubInitComplete,
   logGrpcReadConnectWarning,
+  logNotifyTransportInit,
   logPatchApplied,
   logAlreadyPatched,
 }
