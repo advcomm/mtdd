@@ -85,6 +85,7 @@ module.exports = {
   getPreloadLogConfig: preloadLogger.getPreloadLogConfig,
   resolvePreloadEnv: preloadLogger.resolvePreloadEnv,
   buildQueryRequestPayload: grpcArrowCodec.buildQueryRequestPayload,
+  decodeQueryStreamToPgResult: grpcArrowCodec.decodeQueryStreamToPgResult,
   decodeArrowStreamToPgResult: grpcArrowCodec.decodeArrowStreamToPgResult,
   decodeQueryParamsForTest: grpcArrowCodec.decodeQueryParamsForTest,
   parseListenNotifyStatement: listenNotifyParse.parseListenNotifyStatement,

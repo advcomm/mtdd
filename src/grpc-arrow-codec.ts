@@ -1,20 +1,11 @@
 const resultMeta = require('./flatbuffers/result-meta-codec')
+const { decodeRawPgBatch } = require('./pg-binary-decode')
+const { encodeRawPgBatch, mockWireFormat } = require('./pg-binary-encode')
 
 const CHUNK_KIND_SCHEMA = 'CHUNK_KIND_SCHEMA'
 const CHUNK_KIND_BATCH = 'CHUNK_KIND_BATCH'
 const CHUNK_KIND_TRAILER = 'CHUNK_KIND_TRAILER'
 const CHUNK_KIND_ERROR = 'CHUNK_KIND_ERROR'
-
-function loadArrow() {
-  try {
-    return require('apache-arrow')
-  } catch (err) {
-    throw new Error(
-      '@advcomm/mtdd: apache-arrow is required for gRPC query results. ' +
-        `Install it alongside @advcomm/mtdd. (${err.message})`,
-    )
-  }
-}
 
 function encodeQueryParam(value, oid, index) {
   if (value === null || value === undefined) {
@@ -64,17 +55,17 @@ function buildQueryRequestPayload(hostIndex, req, sessionId) {
     row_mode: req.row_mode ?? req.rowMode ?? '',
     session_id: sessionId ?? '',
     params: buildLibpqQueryParams(req),
-    result_format: 0,
+    result_format: 1,
   }
 }
 
 function pgFieldsFromSchema(schema) {
-  return (schema.fields ?? []).map((field) => ({
+  return (schema?.fields ?? []).map((field) => ({
     name: field.name,
     dataTypeID: field.data_type_oid,
     tableID: field.table_oid,
     columnID: field.column_id,
-    format: field.format,
+    format: mockWireFormat(field.data_type_oid ?? 0, field.format),
   }))
 }
 
@@ -86,56 +77,29 @@ function commandFromTag(commandTag, fallback) {
   return token ? token.toUpperCase() : fallback ?? 'SELECT'
 }
 
-function arrowValueToJs(value) {
-  if (value === null || value === undefined) {
-    return null
-  }
-  if (typeof value === 'bigint') {
-    return value.toString()
-  }
-  if (value instanceof Date) {
-    return value
-  }
-  if (typeof value === 'object' && value !== null && typeof value.toJSON === 'function') {
-    return value.toJSON()
-  }
-  return value
+function chunkPayload(chunk) {
+  return chunk.payload ?? chunk.Payload ?? chunk.arrow_ipc ?? chunk.arrowIpc
 }
 
-function arrowTableToRows(table, fieldNames) {
-  const names =
-    fieldNames.length > 0 ? fieldNames : table.schema.fields.map((f) => f.name)
-  const rows = []
-  const rowCount = table.numRows ?? 0
-
-  for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
-    const row = {}
-    for (const name of names) {
-      const column = table.getChild(name)
-      if (!column) {
-        row[name] = null
-        continue
-      }
-      row[name] = arrowValueToJs(column.get(rowIndex))
-    }
-    rows.push(row)
-  }
-
-  return rows
-}
-
-function decodeArrowStreamToPgResult(chunks) {
+function decodeQueryStreamToPgResult(chunks) {
   let schema = null
-  const ipcParts = []
   let trailer = null
-  let error = null
+  const rows = []
 
   for (const chunk of chunks) {
     const kind = chunk.kind ?? chunk.Kind
     if (kind === CHUNK_KIND_ERROR || kind === 4 || kind === 'CHUNK_KIND_ERROR') {
       const meta = chunk.flatbuffer_meta ?? chunk.flatbufferMeta
       if (meta && meta.length > 0) {
-        error = resultMeta.decodePgError(meta)
+        const error = resultMeta.decodePgError(meta)
+        const parts = [error.message]
+        if (error.sqlstate) {
+          parts.push(`(${error.sqlstate})`)
+        }
+        if (error.detail) {
+          parts.push(error.detail)
+        }
+        throw new Error(parts.filter(Boolean).join(' '))
       }
       break
     }
@@ -144,16 +108,19 @@ function decodeArrowStreamToPgResult(chunks) {
       if (meta && meta.length > 0) {
         schema = resultMeta.decodeResultSchema(meta)
       }
-      const ipc = chunk.arrow_ipc ?? chunk.arrowIpc
-      if (ipc && ipc.length > 0) {
-        ipcParts.push(Buffer.from(ipc))
+      const payload = chunkPayload(chunk)
+      if (schema && payload && payload.length > 0) {
+        rows.push(...decodeRawPgBatch(Buffer.from(payload), schema.fields))
       }
       continue
     }
     if (kind === CHUNK_KIND_BATCH || kind === 2 || kind === 'CHUNK_KIND_BATCH') {
-      const ipc = chunk.arrow_ipc ?? chunk.arrowIpc
-      if (ipc && ipc.length > 0) {
-        ipcParts.push(Buffer.from(ipc))
+      const payload = chunkPayload(chunk)
+      if (!schema) {
+        throw new Error('BATCH chunk before SCHEMA')
+      }
+      if (payload && payload.length > 0) {
+        rows.push(...decodeRawPgBatch(Buffer.from(payload), schema.fields))
       }
       continue
     }
@@ -165,69 +132,78 @@ function decodeArrowStreamToPgResult(chunks) {
     }
   }
 
-  if (error) {
-    const parts = [error.message]
-    if (error.sqlstate) {
-      parts.push(`(${error.sqlstate})`)
-    }
-    if (error.detail) {
-      parts.push(error.detail)
-    }
-    throw new Error(parts.filter(Boolean).join(' '))
-  }
-
-  const fieldNames = (schema?.fields ?? []).map((f) => f.name)
   const fields = pgFieldsFromSchema(schema ?? { fields: [] })
-  let rows = []
-
-  if (ipcParts.length > 0) {
-    const arrow = loadArrow()
-    const buffer = Buffer.concat(ipcParts)
-    const table = arrow.tableFromIPC(buffer)
-    rows = arrowTableToRows(table, fieldNames)
-  }
-
-  const command = commandFromTag(trailer?.command_tag, schema?.command)
-  const rowCount =
-    trailer?.row_count != null ? Number(trailer.row_count) : rows.length
 
   return {
-    command,
-    rowCount,
+    command: commandFromTag(trailer?.command_tag, schema?.command),
+    rowCount: trailer?.row_count != null ? Number(trailer.row_count) : rows.length,
     oid: trailer?.oid ?? null,
     fields,
     rows,
   }
 }
 
+/** @deprecated Use decodeQueryStreamToPgResult */
+const decodeArrowStreamToPgResult = decodeQueryStreamToPgResult
+
+function inferPgFields(fields, rows) {
+  const explicit = fields ?? []
+  const first = rows?.[0]
+  if (!first || typeof first !== 'object') {
+    return explicit
+  }
+  const known = new Set(explicit.map((field) => field.name))
+  const extra = Object.keys(first)
+    .filter((name) => !known.has(name))
+    .map((name) => ({
+      name,
+      dataTypeID: typeof first[name] === 'number' ? 23 : 25,
+    }))
+  if (explicit.length === 0 && extra.length === 0) {
+    return []
+  }
+  return [...explicit, ...extra]
+}
+
 function encodePgResultAsChunks(pgResult) {
-  const rowKeys = columnNamesForRows(pgResult.fields, pgResult.rows)
+  const pgFields = inferPgFields(pgResult.fields, pgResult.rows)
+  const rowKeys = columnNamesForRows(pgFields, pgResult.rows)
   const fieldByName = new Map(
-    (pgResult.fields ?? []).map((field) => [field.name, field]),
+    pgFields.map((field) => [field.name, field]),
   )
-  const fields = rowKeys.map((name) => {
+  const flexFields = rowKeys.map((name) => {
     const field = fieldByName.get(name) as
       | { tableID?: number; columnID?: number; dataTypeID?: number; format?: number }
       | undefined
     return {
-      name,
+      name: String(name),
       table_oid: field?.tableID ?? 0,
       column_id: field?.columnID ?? 0,
       data_type_oid: field?.dataTypeID ?? 0,
-      format: field?.format ?? 0,
+      format: mockWireFormat(field?.dataTypeID ?? 0, field?.format),
     }
   })
 
+  const orderedRows = (pgResult.rows ?? []).map((row) => {
+    const out: Record<string, unknown> = {}
+    for (const name of rowKeys) {
+      out[String(name)] = row ? row[name] ?? null : null
+    }
+    return out
+  })
+
+  const payload = encodeRawPgBatch(flexFields, orderedRows)
+
   const schemaBuffer = resultMeta.encodeResultSchema({
     command: pgResult.command ?? 'SELECT',
-    fields,
+    fields: flexFields,
   })
 
   const chunks = [
     {
       kind: CHUNK_KIND_SCHEMA,
       flatbuffer_meta: schemaBuffer,
-      arrow_ipc: encodeRowsAsArrowIpc(pgResult.fields ?? [], pgResult.rows ?? []),
+      payload,
     },
   ]
 
@@ -240,14 +216,14 @@ function encodePgResultAsChunks(pgResult) {
   chunks.push({
     kind: CHUNK_KIND_TRAILER,
     flatbuffer_meta: trailerBuffer,
-    arrow_ipc: Buffer.alloc(0),
+    payload: Buffer.alloc(0),
   })
 
   return chunks
 }
 
 function columnNamesForRows(fields, rows) {
-  const names = new Set()
+  const names = new Set<string>()
   for (const field of fields ?? []) {
     if (field?.name) {
       names.add(field.name)
@@ -261,25 +237,6 @@ function columnNamesForRows(fields, rows) {
     }
   }
   return [...names]
-}
-
-function encodeRowsAsArrowIpc(fields, rows) {
-  const arrow = loadArrow()
-  const fieldNames = columnNamesForRows(fields, rows)
-
-  if (fieldNames.length === 0) {
-    const table = arrow.tableFromArrays({})
-    return Buffer.from(arrow.tableToIPC(table))
-  }
-
-  const columns: Record<string, unknown[]> = {}
-  for (const name of fieldNames) {
-    const key = String(name)
-    columns[key] = rows.map((row) => (row ? row[key] ?? null : null))
-  }
-
-  const table = arrow.tableFromArrays(columns)
-  return Buffer.from(arrow.tableToIPC(table))
 }
 
 async function collectStreamChunks(stream) {
@@ -322,10 +279,9 @@ module.exports = {
   buildQueryRequestPayload,
   buildLibpqQueryParams,
   encodeQueryParam,
+  decodeQueryStreamToPgResult,
   decodeArrowStreamToPgResult,
   encodePgResultAsChunks,
-  encodeRowsAsArrowIpc,
   collectStreamChunks,
   decodeQueryParamsForTest,
-  loadArrow,
 }

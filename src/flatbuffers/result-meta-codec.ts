@@ -1,6 +1,6 @@
 /**
  * Control-plane metadata for QueryStream ResultChunk (FlexBuffers encoding).
- * Column data is carried in arrow_ipc bytes on the same chunk.
+ * Column data is carried in ResultChunk.payload (RPGB v1); see pg-binary-decode.ts.
  */
 
 const flexbuffers = require('flatbuffers/js/flexbuffers')

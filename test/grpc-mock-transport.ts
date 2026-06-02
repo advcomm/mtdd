@@ -2,7 +2,7 @@ const { getWriteHost, getReadHosts } = require('../src/host-config')
 const { classifyQuery } = require('../src/query-classifier')
 const {
   encodePgResultAsChunks,
-  decodeArrowStreamToPgResult,
+  decodeQueryStreamToPgResult,
 } = require('../src/grpc-arrow-codec')
 
 function normalizeHostEntryForConnect(entry) {
@@ -64,7 +64,7 @@ function createRecordingMockTransport(state) {
       })
 
       const pgResult = buildMockPgResult(endpoint, request, state)
-      return decodeArrowStreamToPgResult(encodePgResultAsChunks(pgResult))
+      return decodeQueryStreamToPgResult(encodePgResultAsChunks(pgResult))
     },
 
     async disconnectAll(shards) {

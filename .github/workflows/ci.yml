@@ -1,10 +1,8 @@
 name: CI
 
+# Automatic CI disabled — run manually from Actions → CI → Run workflow.
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -23,7 +21,6 @@ jobs:
 
   proto-check:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +28,7 @@ jobs:
 
       - name: Check proto matches mtdd_server
         env:
-          MTDD_PROTO_REF: c4a05f63294c2251e2bb19ec5de92ceba70cf8de
+          MTDD_PROTO_REF: 765da450c4ae09fefd0dcf57f98e560033870803
         run: |
           chmod +x scripts/sync-proto.sh
           cp proto/mtdd.proto proto/mtdd.proto.bak

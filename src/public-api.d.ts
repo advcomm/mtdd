@@ -38,6 +38,15 @@ export function mergeFanOutResults(
   results: QueryResult[],
 ): QueryResult
 
+export function decodeQueryStreamToPgResult(
+  chunks: Array<Record<string, unknown>>,
+): QueryResult
+
+/** @deprecated Use decodeQueryStreamToPgResult */
+export function decodeArrowStreamToPgResult(
+  chunks: Array<Record<string, unknown>>,
+): QueryResult
+
 export function fanOutOnly(
   target: Pool | PoolClient,
   req: MtddQueryConfig,

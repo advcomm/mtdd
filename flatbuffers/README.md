@@ -6,6 +6,6 @@
 - **TRAILER**: `{ command_tag, row_count, oid }`
 - **ERROR**: `{ sqlstate, severity, message, detail, position }`
 
-Column values are **not** encoded here; they are sent in `arrow_ipc` on the same chunk (see `grpc-arrow-codec.js`).
+Column values are **not** encoded here; they are sent in `ResultChunk.payload` as RPGB v1 batches (see [`src/pg-binary-decode.ts`](../src/pg-binary-decode.ts) and [`src/grpc-arrow-codec.ts`](../src/grpc-arrow-codec.ts)).
 
-Codec: [`result-meta-codec.js`](result-meta-codec.js).
+Codec: [`src/flatbuffers/result-meta-codec.ts`](../src/flatbuffers/result-meta-codec.ts).

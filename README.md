@@ -146,20 +146,20 @@ NODE_ENV=production MTDD_LOG_BACKEND=otel node --require @advcomm/mtdd/register 
 
 Proto definition: [`proto/mtdd.proto`](proto/mtdd.proto).
 
-#### gRPC wire format (libpq + Arrow streaming)
+#### gRPC wire format (libpq binary streaming)
 
 | Piece | Format |
 |-------|--------|
 | **Connect** | libpq keywords in `ConnectRequest` (`dbname`, `user`, `password`, `port`, `host`, …) |
-| **Query** | `QueryStream` with `PQexecParams`-style `params[]` (`oid`, `format` 0=text/1=binary, `value` bytes) |
-| **Result metadata** | FlexBuffers in `ResultChunk.flatbuffer_meta` ([`flatbuffers/result-meta-codec.js`](flatbuffers/result-meta-codec.js)) |
-| **Result rows** | Apache Arrow IPC in `ResultChunk.arrow_ipc` |
+| **Query** | `QueryStream` with `PQexecParams`-style `params[]`; **`result_format` must be `1`** (libpq binary) |
+| **Result metadata** | FlexBuffers in `ResultChunk.flatbuffer_meta` ([`src/flatbuffers/result-meta-codec.ts`](src/flatbuffers/result-meta-codec.ts)) |
+| **Result rows** | RPGB v1 raw libpq cells in `ResultChunk.payload` ([`src/pg-binary-decode.ts`](src/pg-binary-decode.ts)) |
 
-Shard agents must implement **`QueryStream` only** (unary `Query` + JSON `result_json` was removed). The client requires [`apache-arrow`](https://www.npmjs.com/package/apache-arrow) and [`flatbuffers`](https://www.npmjs.com/package/flatbuffers).
+Shard agents must implement **`QueryStream` only**. The client requires [`flatbuffers`](https://www.npmjs.com/package/flatbuffers) for control metadata; row data is decoded locally from PostgreSQL OIDs.
 
-Chunk sequence: `SCHEMA` → `BATCH`* → `TRAILER` (or `ERROR`). The Node client decodes Arrow batches into the same pg `Result` shape (`rows`, `fields`, `rowCount`) used by merge logic.
+Chunk sequence: `SCHEMA` (optional first batch in `payload`) → `BATCH`* → `TRAILER` (or `ERROR`). The Node client decodes RPGB batches into the same pg `Result` shape (`rows`, `fields`, `rowCount`) used by merge logic.
 
-**Breaking change:** upgrade shard servers before deploying a client build that uses this proto.
+**Breaking change:** upgrade shard servers to [mtdd_server@765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803) or newer before deploying this client (Arrow IPC removed; `ResultChunk.payload` replaces `arrow_ipc`).
 
 **Plain SQL only:** Do not set `name` on query configs (`mtdd_server` rejects `QueryRequest.name`). ORMs are not supported.
 

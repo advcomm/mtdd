@@ -73,10 +73,10 @@ Default `MTDD_FANOUT_POLICY=all`: one shard error fails the query. `best_effort`
 
 ## Proto sync
 
-`mtdd_server` is the source of truth. Pull into this repo:
+`mtdd_server` is the source of truth ([765da45](https://github.com/advcomm/mtdd_server/commit/765da450c4ae09fefd0dcf57f98e560033870803): RPGB streaming, `ResultChunk.payload`, `result_format = 1`). Pull into this repo:
 
 ```bash
-MTDD_PROTO_REF=c4a05f63294c2251e2bb19ec5de92ceba70cf8de ./scripts/sync-proto.sh
+MTDD_PROTO_REF=765da450c4ae09fefd0dcf57f98e560033870803 ./scripts/sync-proto.sh
 ```
 
 ## Integration tests (optional)

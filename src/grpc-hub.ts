@@ -75,7 +75,7 @@ function promisifyQueryStream(client, request, deadlineMs) {
     call.on('error', reject)
     call.on('end', () => {
       try {
-        resolve(grpcArrowCodec.decodeArrowStreamToPgResult(chunks))
+        resolve(grpcArrowCodec.decodeQueryStreamToPgResult(chunks))
       } catch (err) {
         reject(err)
       }

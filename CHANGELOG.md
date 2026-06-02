@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **RPGB streaming (mtdd_server@765da45):** send `QueryRequest.result_format = 1`; decode `ResultChunk.payload` (RPGB v1) instead of Arrow IPC. Removed `apache-arrow` dependency. `decodeQueryStreamToPgResult` is the primary decoder; `decodeArrowStreamToPgResult` remains as alias.
 - **TypeScript:** library source lives under `src/`; `npm run build` emits `dist/`. Published entrypoints are `dist/src/index.js` with consumer types in `src/public-api.d.ts`. Run `npm test` (build + test) when developing.
 - Build/export safety tests: `build-artifacts`, `package-exports`, `proto-path-dist`, `typescript-consumer` fixture (`strict` tsc).
 
