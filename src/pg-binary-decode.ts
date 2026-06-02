@@ -1,3 +1,14 @@
+/**
+ * RPGB v1 wire layout (matches mtdd_server raw_batch_encoder.cpp):
+ * - Batch header (magic, version, row_count, col_count): uint32 LE
+ * - Per cell: null flag (1 byte; 1 = NULL), then if non-null: value length uint32 LE + bytes
+ *
+ * PostgreSQL binary cell payloads (libpq format=1), byte order per PG docs:
+ * - int2, int4, int8, date, timestamp/timestamptz, numeric header/digits: big-endian
+ * - float4, float8: IEEE 754 in server native byte order (x86_64 → little-endian)
+ * - bool, bytea, uuid: opaque bytes (no multi-byte integer endianness)
+ * - format=0: UTF-8 text
+ */
 export const RAW_PG_BATCH_MAGIC = 0x42504752
 export const RAW_PG_BATCH_VERSION = 1
 
@@ -104,7 +115,7 @@ function decodeNumericBinary(buffer: Buffer): string | null {
 }
 
 function uuidBytesToString(bytes: Buffer): string {
-  const hex = Buffer.from(bytes).toString('hex')
+  const hex = bytes.toString('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
@@ -193,11 +204,12 @@ export function decodeRawPgBatch(
   }
 
   const rows: Record<string, unknown>[] = Array.from({ length: numRows }, () => ({}))
+  const names = fields.map((field) => field.name)
   let offset = 16
 
   for (let col = 0; col < numCols; col++) {
     const field = fields[col]
-    const name = field.name
+    const name = names[col]
     for (let row = 0; row < numRows; row++) {
       if (offset >= buffer.length) {
         throw new Error('raw PG batch truncated')

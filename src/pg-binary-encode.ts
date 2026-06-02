@@ -110,14 +110,8 @@ export function encodeRawPgBatch(
 ): Buffer {
   const numRows = rows.length
   const numCols = fields.length
-  const parts: Buffer[] = []
-
-  const header = Buffer.alloc(16)
-  header.writeUInt32LE(RAW_PG_BATCH_MAGIC, 0)
-  header.writeUInt32LE(RAW_PG_BATCH_VERSION, 4)
-  header.writeUInt32LE(numRows, 8)
-  header.writeUInt32LE(numCols, 12)
-  parts.push(header)
+  const cells: (Buffer | null)[] = []
+  let totalSize = 16
 
   for (let col = 0; col < numCols; col++) {
     const field = fields[col]
@@ -125,18 +119,36 @@ export function encodeRawPgBatch(
     for (let row = 0; row < numRows; row++) {
       const value = rows[row]?.[name]
       if (value === null || value === undefined) {
-        parts.push(Buffer.from([1]))
+        cells.push(null)
+        totalSize += 1
         continue
       }
       const bytes = encodePgCellBytes(field, value)
-      const lenBuf = Buffer.alloc(5)
-      lenBuf[0] = 0
-      lenBuf.writeUInt32LE(bytes.length, 1)
-      parts.push(lenBuf, bytes)
+      cells.push(bytes)
+      totalSize += 5 + bytes.length
     }
   }
 
-  return Buffer.concat(parts)
+  const out = Buffer.alloc(totalSize)
+  out.writeUInt32LE(RAW_PG_BATCH_MAGIC, 0)
+  out.writeUInt32LE(RAW_PG_BATCH_VERSION, 4)
+  out.writeUInt32LE(numRows, 8)
+  out.writeUInt32LE(numCols, 12)
+
+  let offset = 16
+  for (const cell of cells) {
+    if (cell === null) {
+      out[offset++] = 1
+      continue
+    }
+    out[offset++] = 0
+    out.writeUInt32LE(cell.length, offset)
+    offset += 4
+    cell.copy(out, offset)
+    offset += cell.length
+  }
+
+  return out
 }
 
 export function schemaFieldsFromPgResult(
