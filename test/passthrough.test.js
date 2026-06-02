@@ -56,10 +56,10 @@ describe('query passthrough', () => {
     install(pg)
 
     const pool = new pg.Pool({ host: '127.0.0.1' })
-    await pool.query({ text: 'SELECT $1', values: [1], name: 'q1' })
+    await pool.query({ text: 'SELECT $1', values: [1] })
 
     assert.equal(grpcState.queries[0].text, 'SELECT $1')
     assert.deepEqual(decodeQueryParamsForTest(grpcState.queries[0].params), [1])
-    assert.equal(grpcState.queries[0].name, 'q1')
+    assert.equal(grpcState.queries[0].name, '')
   })
 })

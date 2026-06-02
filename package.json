@@ -10,6 +10,7 @@
     "./hooks": "./hooks.js"
   },
   "files": [
+    ".npmrc",
     "*.js",
     "proto/",
     "flatbuffers/",
@@ -22,7 +23,8 @@
   ],
   "scripts": {
     "test": "node --test --test-concurrency=1 test/*.test.js",
-    "test:integration": "node scripts/integration-smoke.js"
+    "test:integration": "node scripts/integration-smoke.js",
+    "test:integration:notify-reconnect": "node scripts/integration-notify-reconnect-smoke.js"
   },
   "types": "index.d.ts",
   "engines": {

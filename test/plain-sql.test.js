@@ -37,19 +37,22 @@ describe('plain SQL only', () => {
           name: 'find_user',
           values: [],
         }),
-      /prepared statements.*plain SQL/i,
+      /plain SQL/i,
     )
   })
 
-  it('allows query config with both name label and text', async () => {
+  it('rejects query config with name even when text is present', async () => {
     const { pg } = createMockPg()
     install(pg)
 
     const pool = new pg.Pool({ host: '127.0.0.1' })
-    const result = await pool.query({
-      name: 'q1',
-      text: 'SELECT 1',
-    })
-    assert.equal(result.command, 'SELECT')
+    await assert.rejects(
+      () =>
+        pool.query({
+          name: 'q1',
+          text: 'SELECT 1',
+        }),
+      /query config "name" is not supported/i,
+    )
   })
 })

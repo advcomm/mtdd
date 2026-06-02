@@ -31,9 +31,16 @@ function pickPgConfigFields(config) {
 function assertPlainSqlQuery(req) {
   const hasName = req.name !== undefined && req.name !== ''
   const hasText = typeof req.text === 'string' && req.text.trim() !== ''
-  if (hasName && !hasText) {
+
+  if (hasName) {
     throw new Error(
-      '@advcomm/mtdd: prepared statements are not supported; send plain SQL text on every query (not name-only).',
+      '@advcomm/mtdd: query config "name" is not supported (plain SQL only; mtdd_server rejects QueryRequest.name).',
+    )
+  }
+
+  if (!hasText) {
+    throw new Error(
+      '@advcomm/mtdd: query requires plain SQL text (prepared statements are not supported).',
     )
   }
 }

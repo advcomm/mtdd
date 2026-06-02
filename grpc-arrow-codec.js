@@ -60,7 +60,7 @@ function buildQueryRequestPayload(hostIndex, req, sessionId) {
   return {
     host_index: hostIndex,
     text: req.text ?? '',
-    name: req.name ?? '',
+    name: '',
     row_mode: req.row_mode ?? req.rowMode ?? '',
     session_id: sessionId ?? '',
     params: buildLibpqQueryParams(req),

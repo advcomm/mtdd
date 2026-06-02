@@ -17,6 +17,10 @@ const {
   getMtddMeta,
 } = require('./pool-facade')
 const preloadLog = require('./preload-logger')
+const {
+  validateGrpcTlsConfig,
+  validateNotifyTlsConfig,
+} = require('./grpc-tls')
 
 const PATCHED = Symbol.for('@advcomm/mtdd.patched')
 
@@ -29,6 +33,17 @@ function runPreload() {
 
   const grpcCredentials = getGrpcCredentialsFromEnv()
   preloadLog.logGrpcCredentials(grpcCredentials)
+
+  if (process.env.MTDD_GRPC_MOCK !== '1') {
+    const shardTls = validateGrpcTlsConfig()
+    const notifyTls = validateNotifyTlsConfig()
+    preloadLog.logInfo('grpc tls validated', {
+      shard: shardTls.mode,
+      shardMTLS: shardTls.mTLS,
+      notify: notifyTls.mode,
+      notifyMTLS: notifyTls.mTLS,
+    })
+  }
 
   verifyLocalPostgresAtStartup(grpcCredentials)
 

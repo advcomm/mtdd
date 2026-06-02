@@ -4,6 +4,13 @@
 
 ### Added
 
+- Align plain SQL with mtdd_server@04d16b5: reject any query `name`; never send `QueryRequest.name`
+- TLS preload validation (`validateGrpcTlsConfig`) matching server native TLS + nginx termination docs
+- `scripts/integration-notify-reconnect-smoke.js`; proto sync default ref `04d16b5`
+- `.npmrc` with `min-release-age=7`
+
+### Added (earlier)
+
 - gRPC TLS via `MTDD_GRPC_TLS_*` / `MTDD_NOTIFY_TLS_*` environment variables
 - `shutdownMtdd()` and `MTDD_AUTO_SHUTDOWN=1` for graceful teardown
 - LISTEN/NOTIFY cleanup on checked-out `client.release()`

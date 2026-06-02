@@ -147,7 +147,7 @@ Chunk sequence: `SCHEMA` → `BATCH`* → `TRAILER` (or `ERROR`). The Node clien
 
 **Breaking change:** upgrade shard servers before deploying a client build that uses this proto.
 
-**Plain SQL only:** Extended query / prepared statements (`query` config `name`) are rejected. ORMs are not supported.
+**Plain SQL only:** Do not set `name` on query configs (`mtdd_server` rejects `QueryRequest.name`). ORMs are not supported.
 
 **Not in v1:** Parse/Bind/Execute RPCs on the wire.
 
@@ -253,7 +253,7 @@ See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the impl
 
 ### Shutdown and TLS
 
-Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. Enable gRPC TLS with `MTDD_GRPC_TLS_CA_FILE` (and optional client cert files). See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For TLS, set `MTDD_GRPC_TLS=1` and `MTDD_GRPC_TLS_CA_FILE` (optional client cert/key for mTLS). Use nginx TLS termination or native server TLS — see [docs/OPERATIONS.md](docs/OPERATIONS.md) and [mtdd_server@04d16b5](https://github.com/advcomm/mtdd_server/commit/04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5).
 
 | Variable | Purpose |
 |----------|---------|

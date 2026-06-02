@@ -18,27 +18,68 @@ function readTlsFile(filePath, label) {
 }
 
 function resolveTlsEnv(prefix) {
-  const enabled =
-    isTruthyEnv(process.env[`${prefix}`]) ||
-    isTruthyEnv(process.env.MTDD_GRPC_TLS)
-
-  const caFile =
-    process.env[`${prefix}_CA_FILE`] ?? process.env.MTDD_GRPC_TLS_CA_FILE
-  const certFile =
-    process.env[`${prefix}_CERT_FILE`] ?? process.env.MTDD_GRPC_TLS_CERT_FILE
-  const keyFile =
-    process.env[`${prefix}_KEY_FILE`] ?? process.env.MTDD_GRPC_TLS_KEY_FILE
-  const serverName =
-    process.env[`${prefix}_SERVER_NAME`] ??
-    process.env.MTDD_GRPC_TLS_SERVER_NAME
+  const caFile = process.env[`${prefix}_CA_FILE`] ?? null
+  const enabled = isTruthyEnv(process.env[prefix]) || Boolean(caFile)
 
   return {
-    enabled: enabled || Boolean(caFile),
+    prefix,
+    enabled,
     caFile,
-    certFile,
-    keyFile,
-    serverName,
+    certFile: process.env[`${prefix}_CERT_FILE`] ?? null,
+    keyFile: process.env[`${prefix}_KEY_FILE`] ?? null,
+    serverName: process.env[`${prefix}_SERVER_NAME`] ?? null,
   }
+}
+
+function validateTlsEnvConfig(tls) {
+  if (!tls.enabled && !tls.caFile) {
+    return {
+      mode: 'insecure',
+      mTLS: false,
+      prefix: tls.prefix,
+    }
+  }
+
+  if (tls.enabled && !tls.caFile) {
+    throw new Error(
+      `@advcomm/mtdd: ${tls.prefix}=1 requires ${tls.prefix}_CA_FILE (CA bundle to verify the server or nginx front-end).`,
+    )
+  }
+
+  readTlsFile(tls.caFile, `${tls.prefix}_CA_FILE`)
+
+  const hasCert = Boolean(tls.certFile)
+  const hasKey = Boolean(tls.keyFile)
+  if (hasCert !== hasKey) {
+    throw new Error(
+      `@advcomm/mtdd: ${tls.prefix}_CERT_FILE and ${tls.prefix}_KEY_FILE must both be set for mTLS.`,
+    )
+  }
+
+  if (hasCert) {
+    readTlsFile(tls.certFile, `${tls.prefix}_CERT_FILE`)
+    readTlsFile(tls.keyFile, `${tls.prefix}_KEY_FILE`)
+  }
+
+  return {
+    mode: 'tls',
+    mTLS: hasCert && hasKey,
+    prefix: tls.prefix,
+    caFile: tls.caFile,
+    serverName: tls.serverName,
+  }
+}
+
+function validateGrpcTlsConfig() {
+  return validateTlsEnvConfig(resolveTlsEnv('MTDD_GRPC_TLS'))
+}
+
+function validateNotifyTlsConfig() {
+  const notifyTls = resolveTlsEnv('MTDD_NOTIFY_TLS')
+  if (notifyTls.enabled || notifyTls.caFile) {
+    return validateTlsEnvConfig(notifyTls)
+  }
+  return validateGrpcTlsConfig()
 }
 
 function createGrpcChannelCredentials(grpc, options = {}) {
@@ -49,13 +90,9 @@ function createGrpcChannelCredentials(grpc, options = {}) {
     return grpc.credentials.createInsecure()
   }
 
-  const rootCerts = readTlsFile(tls.caFile, `${prefix}_CA_FILE`)
-  if (!rootCerts) {
-    throw new Error(
-      `@advcomm/mtdd: ${prefix}=1 or ${prefix}_CA_FILE is required for gRPC TLS`,
-    )
-  }
+  validateTlsEnvConfig(tls)
 
+  const rootCerts = readTlsFile(tls.caFile, `${prefix}_CA_FILE`)
   const privateKey = readTlsFile(tls.keyFile, `${prefix}_KEY_FILE`)
   const certChain = readTlsFile(tls.certFile, `${prefix}_CERT_FILE`)
 
@@ -79,4 +116,7 @@ module.exports = {
   createGrpcChannelCredentials,
   createNotifyChannelCredentials,
   resolveTlsEnv,
+  validateGrpcTlsConfig,
+  validateNotifyTlsConfig,
+  validateTlsEnvConfig,
 }

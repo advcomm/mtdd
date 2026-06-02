@@ -30,7 +30,7 @@ jobs:
 
       - name: Check proto matches mtdd_server
         env:
-          MTDD_PROTO_REF: main
+          MTDD_PROTO_REF: 04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5
         run: |
           chmod +x scripts/sync-proto.sh
           cp proto/mtdd.proto proto/mtdd.proto.bak

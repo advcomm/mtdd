@@ -114,5 +114,7 @@ module.exports = {
   getGrpcQueryTimeoutMs: grpcPolicy.getGrpcQueryTimeoutMs,
   getGrpcMaxRetries: grpcPolicy.getGrpcMaxRetries,
   createGrpcChannelCredentials: grpcTls.createGrpcChannelCredentials,
+  validateGrpcTlsConfig: grpcTls.validateGrpcTlsConfig,
+  validateNotifyTlsConfig: grpcTls.validateNotifyTlsConfig,
   teardownNotifySubscriptions: require('./listen-notify-lifecycle').teardownNotifySubscriptions,
 }
