@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REF="${MTDD_PROTO_REF:-04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5}"
+REF="${MTDD_PROTO_REF:-c4a05f63294c2251e2bb19ec5de92ceba70cf8de}"
 REPO="${MTDD_PROTO_REPO:-https://github.com/advcomm/mtdd_server.git}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/proto/mtdd.proto"

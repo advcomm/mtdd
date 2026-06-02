@@ -1,6 +1,6 @@
 # MTDD client operations
 
-Companion to [mtdd_server docs/OPERATIONS.md](https://github.com/advcomm/mtdd_server/blob/main/docs/OPERATIONS.md) (server commit [04d16b5](https://github.com/advcomm/mtdd_server/commit/04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5)).
+Companion to [mtdd_server docs/OPERATIONS.md](https://github.com/advcomm/mtdd_server/blob/main/docs/OPERATIONS.md) (server commit [c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de)).
 
 ## Plain SQL only
 
@@ -30,35 +30,42 @@ await pool.end()
 
 Or set `MTDD_AUTO_SHUTDOWN=1` to hook `SIGTERM` / `SIGINT` on preload.
 
-## TLS
+## gRPC path (production)
 
-### nginx termination (default)
+From [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de) onward, `mtdd_server` listens on a **Unix domain socket** (default `unix:/run/mtdd/grpc.sock`). **nginx** on each shard IP accepts client TCP (plain or TLS) and proxies to that socket.
 
-Keep `mtdd_server` on loopback with plain gRPC; terminate TLS at nginx on the shard IP. The client connects with TLS to nginx using the same env vars below (`MTDD_GRPC_TLS_CA_FILE` verifies the nginx certificate).
+This client always dials **`DB_HOST` + `MTDD_GRPC_PORT`** (nginx), not the server socket directly.
 
-See [mtdd_server deploy/nginx/mtdd-grpc.conf](https://github.com/advcomm/mtdd_server/blob/main/deploy/nginx/mtdd-grpc.conf) and [mtdd-grpc-tls.conf](https://github.com/advcomm/mtdd_server/blob/main/deploy/nginx/mtdd-grpc-tls.conf).
+```text
+app (@advcomm/mtdd) --TCP[/TLS]--> nginx (shard IP:port) --unix--> mtdd_server
+```
 
-### Native gRPC TLS (end-to-end)
+See [deploy/nginx/mtdd-grpc.conf](https://github.com/advcomm/mtdd_server/blob/main/deploy/nginx/mtdd-grpc.conf) and [mtdd-grpc-tls.conf](https://github.com/advcomm/mtdd_server/blob/main/deploy/nginx/mtdd-grpc-tls.conf).
 
-When `mtdd_server` has `MTDD_GRPC_TLS=1` with server cert/key, configure the client:
+## TLS (client → nginx)
+
+`mtdd_server` no longer exposes native gRPC TLS (`MTDD_GRPC_TLS_*` was removed on the server). Terminate TLS at nginx and verify **nginx’s** certificate from the client:
 
 | Variable | Purpose |
 |----------|---------|
-| `MTDD_GRPC_TLS=1` | Enable TLS for shard gRPC client |
-| `MTDD_GRPC_TLS_CA_FILE` | CA bundle to verify server (required when TLS enabled) |
+| `MTDD_GRPC_TLS=1` | Enable TLS on the client channel to nginx |
+| `MTDD_GRPC_TLS_CA_FILE` | CA bundle to verify nginx (required when TLS enabled) |
 | `MTDD_GRPC_TLS_CERT_FILE` / `MTDD_GRPC_TLS_KEY_FILE` | Optional mTLS client cert (both required together) |
 | `MTDD_GRPC_TLS_SERVER_NAME` | SNI / certificate hostname override |
 | `MTDD_NOTIFY_TLS_*` | Notify coordinator TLS (falls back to `MTDD_GRPC_TLS_*`) |
 
 TLS file paths are validated at preload (skipped when `MTDD_GRPC_MOCK=1`).
 
-Server-side listener TLS (pair with client):
+## Local dev (optional unix socket)
 
-| Server variable | Purpose |
-|-----------------|---------|
-| `MTDD_GRPC_TLS=1` | TLS on gRPC listener |
-| `MTDD_GRPC_TLS_CERT_FILE` / `MTDD_GRPC_TLS_KEY_FILE` | Server PEM cert/key |
-| `MTDD_GRPC_TLS_CLIENT_CA_FILE` | Optional client CA for mTLS |
+When the app runs on the **same host** as a single-shard `mtdd_server` (no nginx), set:
+
+| Variable | Purpose |
+|----------|---------|
+| `MTDD_GRPC_UNIX_SOCKET` | e.g. `/run/mtdd/grpc.sock` — plain gRPC to the server socket |
+| `DB_HOST` | Still required for metadata; host IP is not used for the gRPC dial |
+
+Do not combine `MTDD_GRPC_UNIX_SOCKET` with `MTDD_GRPC_TLS_*`. Multi-shard deployments must use nginx TCP per shard, not this shortcut.
 
 ## Fan-out failures
 
@@ -69,7 +76,7 @@ Default `MTDD_FANOUT_POLICY=all`: one shard error fails the query. `best_effort`
 `mtdd_server` is the source of truth. Pull into this repo:
 
 ```bash
-MTDD_PROTO_REF=04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5 ./scripts/sync-proto.sh
+MTDD_PROTO_REF=c4a05f63294c2251e2bb19ec5de92ceba70cf8de ./scripts/sync-proto.sh
 ```
 
 ## Integration tests (optional)

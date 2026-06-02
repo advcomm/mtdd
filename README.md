@@ -253,7 +253,7 @@ See `examples/listen-notify-example.js` and `docs/LISTEN-NOTIFY.md` for the impl
 
 ### Shutdown and TLS
 
-Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For TLS, set `MTDD_GRPC_TLS=1` and `MTDD_GRPC_TLS_CA_FILE` (optional client cert/key for mTLS). Use nginx TLS termination or native server TLS — see [docs/OPERATIONS.md](docs/OPERATIONS.md) and [mtdd_server@04d16b5](https://github.com/advcomm/mtdd_server/commit/04d16b5ecdee89dc98184b4c276f9a9b5ef7d8e5).
+Call `shutdownMtdd()` before `pool.end()`, or set `MTDD_AUTO_SHUTDOWN=1`. For production TLS, terminate at nginx and set `MTDD_GRPC_TLS=1` + `MTDD_GRPC_TLS_CA_FILE` on the client (verifies nginx, not `mtdd_server`). Optional `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev without nginx — see [docs/OPERATIONS.md](docs/OPERATIONS.md) and [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de).
 
 | Variable | Purpose |
 |----------|---------|

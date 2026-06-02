@@ -71,6 +71,10 @@ function validateTlsEnvConfig(tls) {
 }
 
 function validateGrpcTlsConfig() {
+  const unixSocket = process.env.MTDD_GRPC_UNIX_SOCKET
+  if (unixSocket !== undefined && String(unixSocket).trim() !== '') {
+    return { mode: 'unix', mTLS: false, prefix: 'MTDD_GRPC_TLS' }
+  }
   return validateTlsEnvConfig(resolveTlsEnv('MTDD_GRPC_TLS'))
 }
 

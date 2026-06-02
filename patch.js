@@ -21,11 +21,13 @@ const {
   validateGrpcTlsConfig,
   validateNotifyTlsConfig,
 } = require('./grpc-tls')
+const { assertUnixSocketDevConstraints } = require('./grpc-target')
 
 const PATCHED = Symbol.for('@advcomm/mtdd.patched')
 
 function runPreload() {
   const hosts = validateEnvDbHost()
+  assertUnixSocketDevConstraints(hosts.length)
   preloadLog.logHostsValidated(hosts)
 
   const lookupUrl = validateLookupUrl()

@@ -2,13 +2,16 @@ const path = require('node:path')
 const { getWriteHost, getReadHosts } = require('./host-config')
 const { pickReadEndpoint } = require('./shard-endpoints')
 const {
-  getGrpcPort,
   getGrpcConnectTimeoutMs,
   getGrpcQueryTimeoutMs,
   getGrpcMaxRetries,
   isRetryableGrpcError,
 } = require('./grpc-policy')
 const { createGrpcChannelCredentials } = require('./grpc-tls')
+const {
+  resolveShardGrpcTarget,
+  isUnixGrpcTarget,
+} = require('./grpc-target')
 const preloadLog = require('./preload-logger')
 const grpcArrowCodec = require('./grpc-arrow-codec')
 
@@ -119,15 +122,17 @@ async function withGrpcRetries(fn, maxRetries) {
 
 function createRealTransport() {
   const { grpc, MtddShard } = loadGrpcClient()
-  const grpcPort = getGrpcPort()
   const connectDeadlineMs = getGrpcConnectTimeoutMs()
   const queryDeadlineMs = getGrpcQueryTimeoutMs()
   const maxRetries = getGrpcMaxRetries()
   const channelCredentials = createGrpcChannelCredentials(grpc)
 
   async function connectEndpoint(host, hostIndex, credentials, role) {
-    const address = `${host}:${grpcPort}`
-    const client = new MtddShard(address, channelCredentials)
+    const address = resolveShardGrpcTarget(host)
+    const endpointCredentials = isUnixGrpcTarget(address)
+      ? grpc.credentials.createInsecure()
+      : channelCredentials
+    const client = new MtddShard(address, endpointCredentials)
 
     const request = buildConnectRequest(hostIndex, credentials, host)
 

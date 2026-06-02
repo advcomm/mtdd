@@ -4,9 +4,11 @@
 
 ### Added
 
+- `MTDD_GRPC_UNIX_SOCKET` for single-shard local dev (plain gRPC to server unix socket; production still uses `DB_HOST` + nginx)
+- Docs aligned with mtdd_server@c4a05f6: nginx → unix socket; server native gRPC TLS removed
 - Align plain SQL with mtdd_server@04d16b5: reject any query `name`; never send `QueryRequest.name`
-- TLS preload validation (`validateGrpcTlsConfig`) matching server native TLS + nginx termination docs
-- `scripts/integration-notify-reconnect-smoke.js`; proto sync default ref `04d16b5`
+- TLS preload validation (`validateGrpcTlsConfig`) for client → nginx TLS
+- `scripts/integration-notify-reconnect-smoke.js`; proto sync default ref `c4a05f6`
 - `.npmrc` with `min-release-age=7`
 
 ### Added (earlier)
