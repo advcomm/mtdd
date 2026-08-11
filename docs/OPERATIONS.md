@@ -2,6 +2,8 @@
 
 Companion to [mtdd_server docs/OPERATIONS.md](https://github.com/advcomm/mtdd_server/blob/main/docs/OPERATIONS.md). Server deploy (nginx, systemd, shard layout) lives there — not duplicated here.
 
+Planning review (control plane vs data plane vs Patroni HA): [MULTI-TENANT-PLATFORM-REVIEW.md](MULTI-TENANT-PLATFORM-REVIEW.md).
+
 | Topic | Server reference |
 |-------|------------------|
 | nginx → Unix socket, TLS at nginx | [mtdd_server@c4a05f6](https://github.com/advcomm/mtdd_server/commit/c4a05f63294c2251e2bb19ec5de92ceba70cf8de)+ |

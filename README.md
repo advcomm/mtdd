@@ -6,6 +6,8 @@ Production-only PostgreSQL interception and routing layer for Node.js applicatio
 
 `@advcomm/mtdd` transparently patches `pg`, validates production `DB_HOST` arrays, resolves shard targets through an HTTP **Lookup server** when `tid` is present, fans out to all shards when `tid` is absent, and propagates tenant context — without changing application code between development and production.
 
+Platform planning (tenant create, ORM SQL, HA, idempotency): [docs/MULTI-TENANT-PLATFORM-REVIEW.md](docs/MULTI-TENANT-PLATFORM-REVIEW.md).
+
 ## Quick start
 
 ### Development
