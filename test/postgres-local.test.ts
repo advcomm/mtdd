@@ -115,11 +115,12 @@ describe('postgres-local', () => {
 })
 
 describe('register local postgres check', () => {
-  it('skips check under MTDD_GRPC_MOCK during register preload', () => {
+  it('register preload fails closed even under MTDD_GRPC_MOCK', () => {
     const result = runRegister({
       DB_HOST: '["10.0.1.10"]',
       MTDD_GRPC_MOCK: '1',
     })
-    assert.equal(result.status, 0, result.stderr)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /register is no longer supported/i)
   })
 })

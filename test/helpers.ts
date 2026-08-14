@@ -65,6 +65,7 @@ function withTestEnv(overrides: Record<string, string | undefined> = {}) {
     MTDD_GRPC_MOCK: process.env.MTDD_GRPC_MOCK,
     MTDD_GRPC_PORT: process.env.MTDD_GRPC_PORT,
     MTDD_LOOKUP_CACHE_TTL_MS: process.env.MTDD_LOOKUP_CACHE_TTL_MS,
+    MTDD_LEGACY_INSTALL: process.env.MTDD_LEGACY_INSTALL,
   }
 
   process.env.DB_HOST =
@@ -77,6 +78,7 @@ function withTestEnv(overrides: Record<string, string | undefined> = {}) {
   process.env.MTDD_GRPC_MOCK = overrides.MTDD_GRPC_MOCK ?? '1'
   process.env.MTDD_LOOKUP_CACHE_TTL_MS =
     overrides.MTDD_LOOKUP_CACHE_TTL_MS ?? '0'
+  process.env.MTDD_LEGACY_INSTALL = overrides.MTDD_LEGACY_INSTALL ?? '1'
   if (overrides.MTDD_LOOKUP_TIMEOUT_MS !== undefined) {
     process.env.MTDD_LOOKUP_TIMEOUT_MS = overrides.MTDD_LOOKUP_TIMEOUT_MS
   }
@@ -102,6 +104,7 @@ function setupGrpcMock() {
     queries: [],
   }
   process.env.MTDD_GRPC_MOCK = '1'
+  process.env.MTDD_LEGACY_INSTALL = process.env.MTDD_LEGACY_INSTALL || '1'
   useMockTransport(createRecordingMockTransport(grpcState))
   const hosts = JSON.parse(process.env.DB_HOST)
   const credentials = getGrpcCredentialsFromEnv()

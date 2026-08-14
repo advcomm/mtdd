@@ -22,6 +22,7 @@ const {
   validateNotifyTlsConfig,
 } = require('./grpc-tls')
 const { assertUnixSocketDevConstraints } = require('./grpc-target')
+const { REGISTER_REMOVED } = require('./proxy/messages')
 
 const PATCHED = Symbol.for('@advcomm/mtdd.patched')
 
@@ -63,6 +64,10 @@ function runPreload() {
 }
 
 function install(pgModule) {
+  if (process.env.MTDD_LEGACY_INSTALL !== '1') {
+    throw new Error(REGISTER_REMOVED)
+  }
+
   const pg = pgModule || require('pg')
 
   if (pg[PATCHED]) {
