@@ -1,7 +1,7 @@
 {
   "name": "@advcomm/mtdd",
   "version": "1.0.0",
-  "description": "Production PostgreSQL interception and routing layer for Node.js pg applications",
+  "description": "PostgreSQL shard routing: SET mtdd.tid on the wire, Lookup placement, native results",
   "main": "dist/src/index.js",
   "types": "src/public-api.d.ts",
   "exports": {
@@ -24,13 +24,14 @@
   },
   "files": [
     ".npmrc",
+    ".env.example",
     "src/public-api.d.ts",
     "dist/src/**/*.js",
     "dist/src/**/*.d.ts",
     "proto/",
-    "examples/",
     "docs/",
     "README.md",
+    "INTEGRATION.md",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -38,7 +39,9 @@
     "prepublishOnly": "npm run build",
     "test": "npm run build && node --test --test-concurrency=1 dist/test/*.test.js",
     "test:integration": "npm run build && node dist/scripts/integration-smoke.js",
-    "test:integration:notify-reconnect": "npm run build && node dist/scripts/integration-notify-reconnect-smoke.js"
+    "test:integration:notify-reconnect": "npm run build && node dist/scripts/integration-notify-reconnect-smoke.js",
+    "mtdd-proxy": "node dist/src/proxy/main.js",
+    "mtdd-proxy:probe": "node dist/scripts/haproxy/probe-tid.js"
   },
   "engines": {
     "node": ">=18"

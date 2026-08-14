@@ -1,11 +1,3 @@
-const preloadLog = require('./preload-logger')
+const { REGISTER_REMOVED } = require("./proxy/messages");
 
-preloadLog.logDebug('register module loading', {
-  nodeEnv: process.env.NODE_ENV,
-})
-
-const { install } = require('./patch')
-const { registerAutoShutdown } = require('./shutdown')
-
-install()
-registerAutoShutdown()
+throw new Error(REGISTER_REMOVED);

@@ -18,8 +18,7 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "examples/**/*.ts",
     "scripts/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "examples"]
+  "exclude": ["node_modules", "dist"]
 }

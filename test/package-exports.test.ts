@@ -70,11 +70,12 @@ describe('register preload via package export', () => {
     restore?.()
   })
 
-  it('register.js preload succeeds when spawned like production', () => {
+  it('register.js preload fails closed (no --require patch)', () => {
     const result = runRegister({
       DB_HOST: '["127.0.0.1"]',
       MTDD_GRPC_MOCK: '1',
     })
-    assert.equal(result.status, 0, result.stderr || result.stdout)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /register is no longer supported/i)
   })
 })
